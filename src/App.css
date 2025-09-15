@@ -1,42 +1,180 @@
-#root {
-  max-width: 1280px;
+:root{
+  --bg-1:#eef7fb;
+  --bg-2:#eaf4f7;
+  --primary:#00a2c7;
+  --primary-2:#1fd1f9;
+  --ink-1:#0f172a;
+  --ink-2:#334155;
+  --ink-3:#64748b;
+}
+
+/* Estructura general */
+html, body, #root { height: 100%; }
+body { margin:0; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+
+/* Shell de 2 columnas en desktop */
+.auth-shell{
+  min-height: 100dvh;
+  display: grid;
+  grid-template-columns: minmax(320px,520px) 1fr;
+  gap: 24px;
+  align-items: center;
+  padding: 28px;
+  background:
+    radial-gradient(1200px 600px at 80% -20%, rgba(31, 122, 140, .18), transparent 60%),
+    radial-gradient(900px 500px at -10% 60%, rgba(31, 209, 249, .14), transparent 60%),
+    linear-gradient(180deg, var(--bg-1), var(--bg-2) 55%, #e8f1f5);
+  position: relative;
+}
+
+@media (max-width: 960px){
+  .auth-shell{
+    grid-template-columns: 1fr;
+    padding: 20px;
+  }
+}
+
+/* Col card (izquierda) */
+.card-col{
+  display:grid;
+  place-items:center;
+}
+
+/* Col carrusel (derecha) */
+.promo-col{
+  min-height: 480px;
+  display:grid;
+  place-items:center;
+}
+
+/* ————— Tarjeta de Login ————— */
+.auth-card{
+  width: min(480px, 94vw);
+  background: #fff;
+  border-radius: 22px;
+  box-shadow:
+    0 25px 60px rgba(16, 24, 40, .12),
+    0 2px 8px rgba(16, 24, 40, .06);
+  padding: 34px 34px 22px;
+}
+
+.auth-logo{
+  width: 72px; height: 72px;
+  border-radius: 18px;
+  display:grid; place-items:center;
+  margin: 0 auto 10px;
+  filter: drop-shadow(0 6px 18px rgba(0, 162, 199, .25));
+}
+
+.auth-title{
+  margin: 8px 0 6px; text-align:center;
+  font-size: 28px; font-weight: 800; color: var(--ink-1);
+}
+.auth-subtitle{
+  margin: 0 0 22px; text-align:center; color: #475569;
+}
+
+.auth-form{ display:flex; flex-direction:column; gap:10px; }
+.auth-label{ font-size:13px; color: var(--ink-2); margin-top:6px; }
+
+.auth-input-wrap{ position:relative; }
+.auth-input-icon{
+  position:absolute; left:12px; top:50%; transform:translateY(-50%);
+  display:grid; place-items:center; pointer-events:none;
+}
+.auth-input{
+  width:100%;
+  padding:12px 44px 12px 42px;
+  border:1px solid #cfeaf3;
+  border-radius:12px;
+  background:#f7fbfd; color:var(--ink-1);
+  outline:none;
+  transition: box-shadow .15s ease, border-color .15s ease, background-color .15s ease;
+}
+.auth-input::placeholder{ color:#94a3b8; }
+.auth-input:focus{
+  border-color:#0ea5e9; background:#fff; box-shadow:0 0 0 3px rgba(14,165,233,.22);
+}
+
+.auth-toggle{
+  position:absolute; right:10px; top:50%; transform:translateY(-50%);
+  background:none; border:none; cursor:pointer; font-size:16px;
+}
+
+.auth-btn{
+  margin-top:6px;
+  width:100%; padding:12px 16px;
+  border:none; border-radius:12px; color:#fff; font-weight:700; cursor:pointer;
+  background-image: linear-gradient(135deg, var(--primary-2) 0%, var(--primary) 100%);
+  box-shadow: 0 8px 18px rgba(0,162,199,.28);
+  transition: transform .05s ease, filter .15s ease;
+}
+.auth-btn:hover{ filter:brightness(1.06); }
+.auth-btn:active{ transform: translateY(1px); }
+.auth-btn:disabled{ opacity:.7; cursor:wait; }
+
+.auth-links{ margin-top:10px; text-align:center; color: var(--ink-3); }
+.auth-link{ color:#0284c7; text-decoration:none; font-weight:600; }
+.auth-link:hover{ text-decoration:underline; }
+.auth-msg{ margin:10px 0 0; text-align:center; color: var(--ink-1); }
+.auth-footer{ margin:16px 0 0; text-align:center; color:#94a3b8; font-size:12px; }
+
+/* ————— Panel de Carrusel ————— */
+.promo-panel{
+  width: min(760px, 100%);
+  min-height: 420px;
+  border-radius: 22px;
+  background:
+    radial-gradient(200px 140px at 78% 18%, rgba(31, 209, 249, .18), transparent 60%),
+    radial-gradient(240px 160px at 18% 78%, rgba(0, 162, 199, .18), transparent 60%),
+    linear-gradient(180deg, #ffffffaa, #ffffff88);
+  backdrop-filter: blur(8px);
+  box-shadow:
+    0 25px 60px rgba(16, 24, 40, .10),
+    0 2px 8px rgba(16, 24, 40, .06);
+  padding: 28px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.promo-inner{ max-width: 560px; margin: 0 auto; text-align: left; }
+.promo-badge{
+  display:inline-block; padding:6px 10px; border-radius:999px;
+  font-size:12px; font-weight:700; letter-spacing:.3px;
+  color:#0369a1; background:#e0f2fe; border:1px solid #bae6fd;
+}
+.promo-title{ margin:16px 0 8px; font-size:28px; color:var(--ink-1) }
+.promo-body{ margin:0 0 16px; color:var(--ink-2); font-size:16px; line-height:1.55 }
+
+.promo-dots{ display:flex; gap:8px; margin-top:12px }
+.promo-dot{
+  width:10px; height:10px; border-radius:50%;
+  border:2px solid #7dd3fc; background:transparent; cursor:pointer;
+}
+.promo-dot.is-active{ background:#22d3ee; border-color:#06b6d4; }
+
+@media (max-width: 960px){
+  .promo-panel{ min-height: 260px; }
+  .promo-inner{ text-align:center; }
+}
+/* Centrar el contenido y usar UNA sola columna */
+.auth-shell.auth-center{
+  display: grid;
+  grid-template-columns: 1fr;   /* sin segunda columna */
+  place-items: center;          /* centra horizontal y vertical */
+  padding: 28px;                /* deja tu fondo/gradiente tal cual */
+}
+
+/* por si el media query anterior imponía 2 columnas */
+@media (min-width: 1024px){
+  .auth-shell.auth-center{
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* asegurar que la tarjeta no tenga márgenes raros */
+.auth-card{
   margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
-}
-
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
-  }
-}
-
-.card {
-  padding: 2em;
-}
-
-.read-the-docs {
-  color: #888;
-}
