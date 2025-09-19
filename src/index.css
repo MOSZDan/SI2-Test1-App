@@ -1,26 +1,5 @@
-/* 🔧 Reset para que el layout ocupe toda la pantalla y no meta fondo oscuro */
-*, *::before, *::after { box-sizing: border-box; }
-
-:root {
-  color-scheme: light;      /* quita el modo dark del template */
-  color: #0f172a;
-  background: transparent;  /* sin fondo oscuro en :root */
-}
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 html, body, #root { height: 100%; }
-
-#root {
-  max-width: none;          /* sin límite de ancho */
-  margin: 0;                /* sin centrado forzado */
-  padding: 0;
-  text-align: initial;
-}
-
-body {
-  margin: 0;
-  min-width: 0;
-  min-height: 100dvh;
-  background: none;         /* dejamos que el fondo lo ponga .auth-shell */
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
