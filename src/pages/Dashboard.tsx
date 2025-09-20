@@ -34,9 +34,9 @@ export default function Dashboard() {
 
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           <Card
-            title="Gestionar Multas"
-            description="Alta y listado"
-            onClick={() => nav("/multas")}
+            title="Gestionar Usuarios"
+            description="Alta, edición y listado de usuarios"
+            onClick={() => nav("/Usuarios")}
           />
           <Card
             title="Gestionar Expensas"
