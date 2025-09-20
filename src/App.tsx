@@ -3,10 +3,11 @@ import { Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { useEffect } from "react";
 
 import Login from "./pages/Login";
-import Register from "./pages/Register";           // 👈 nueva
+import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
+import Usuarios from "./pages/Usuarios";
 import PrivateRoute from "./components/PrivateRoute";
-import { useAuth } from "./context/AuthContext";   // 👈 para Logout
+import { useAuth } from "./context/AuthContext";
 
 // Ruta que cierra sesión y redirige
 function Logout() {
@@ -27,14 +28,23 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Register />} />   {/* 👈 nueva */}
-      <Route path="/logout" element={<Logout />} />       {/* 👈 nueva */}
+      <Route path="/register" element={<Register />} />
+      <Route path="/logout" element={<Logout />} />
 
       <Route
         path="/dashboard"
         element={
           <PrivateRoute>
             <Dashboard />
+          </PrivateRoute>
+        }
+      />
+
+      <Route
+        path="/usuarios"
+        element={
+          <PrivateRoute>
+            <Usuarios />
           </PrivateRoute>
         }
       />
