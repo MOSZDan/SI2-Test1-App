@@ -1,4 +1,4 @@
-// src/pages/Usuarios.tsx
+// src/pages/Roles.tsx
 import React, {useEffect, useMemo, useState} from "react";
 import Navbar from "../components/Navbar";
 import {useAuth} from "../context/AuthContext";
@@ -55,7 +55,9 @@ type EditState = {
     error?: string;
 };
 
-export default function UsuariosPage() {
+const ESTADOS = ["activo", "inactivo", "pendiente"];
+
+export default function RolesPage() {
     const {token} = useAuth(); // debe proveer el token
     const [items, setItems] = useState<Usuario[]>([]);
     const [loading, setLoading] = useState(false);
@@ -63,13 +65,13 @@ export default function UsuariosPage() {
 
     // filtros
     const [search, setSearch] = useState("");
-    const [estado, setEstado] = useState("");
-    const [idrol, setIdrol] = useState<string>("");
-    const [ordering, setOrdering] = useState<string>("codigo");
+    const [estado] = useState("");
+    const [idrol] = useState<string>("");
+    const [ordering] = useState<string>("codigo"); // default
     const [page, setPage] = useState<number>(1);
 
     // roles
-    const [roles, setRoles] = useState<Rol[]>([]);
+    const [roles, setRoles] = useState<Rol[]>([]); // 👈 siempre array
     const [rolesErr, setRolesErr] = useState<string | undefined>();
 
     // paginación (si backend devuelve paginado)
@@ -90,7 +92,7 @@ export default function UsuariosPage() {
         if (!token) return;
         setRolesErr(undefined);
         listRoles(token)
-            .then((data) => setRoles(Array.isArray(data) ? data : [])) // 👈 fuerza array
+            .then((data) => setRoles(Array.isArray(data) ? data : []))
             .catch((e: unknown) => {
                 const msg = e instanceof Error ? e.message : String(e);
                 setRolesErr(msg);
@@ -181,12 +183,12 @@ export default function UsuariosPage() {
             <Navbar/>
 
             <main className="mx-auto max-w-7xl px-4 py-6">
-                <h1 className="text-xl sm:text-2xl font-semibold mb-4">Gestionar Usuarios</h1>
+                <h1 className="text-xl sm:text-2xl font-semibold mb-4">Gestionar Roles</h1>
 
                 {/* Filtros */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 mb-4">
                     <TextInput
-                        placeholder="Buscar (nombre, apellido, correo, estado)…"
+                        placeholder="Buscar (nombre, apellido)…"
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                     />
@@ -211,37 +213,27 @@ export default function UsuariosPage() {
                         <tr>
                             <th className="px-3 py-2 text-left">Código</th>
                             <th className="px-3 py-2 text-left">Nombre</th>
-                            <th className="px-3 py-2 text-left">Correo</th>
-                            <th className="px-3 py-2 text-left">Teléfono</th>
-                            <th className="px-3 py-2 text-left">Sexo</th>
+                            <th className="px-3 py-2 text-left">Estado</th>
+                            <th className="px-3 py-2 text-left">Rol</th>
                             <th className="px-3 py-2"></th>
                         </tr>
                         </thead>
                         <tbody>
-                        {loading && (
+                        {loading ? (
                             <tr>
-                                <td className="px-3 py-4" colSpan={6}>
-                                    Cargando…
-                                </td>
+                                <td className="px-3 py-4" colSpan={5}>Cargando…</td>
                             </tr>
-                        )}
-                        {!loading && items.length === 0 && (
+                        ) : items.length === 0 ? (
                             <tr>
-                                <td className="px-3 py-4" colSpan={6}>
-                                    Sin resultados
-                                </td>
+                                <td className="px-3 py-4" colSpan={5}>Sin resultados</td>
                             </tr>
-                        )}
-                        {!loading &&
+                        ) : (
                             items.map((u) => (
                                 <tr key={u.codigo} className="border-t border-slate-100">
                                     <td className="px-3 py-2">{u.codigo}</td>
-                                    <td className="px-3 py-2">
-                                        {(u.nombre || "") + " " + (u.apellido || "")}
-                                    </td>
-                                    <td className="px-3 py-2">{u.correo}</td>
-                                    <td className="px-3 py-2">{u.telefono ?? "-"}</td>
-                                    <td className="px-3 py-2">{u.sexo ?? "-"}</td>
+                                    <td className="px-3 py-2">{(u.nombre || "") + " " + (u.apellido || "")}</td>
+                                    <td className="px-3 py-2">{u.estado ?? "-"}</td>
+                                    <td className="px-3 py-2">{u.idrol ? rolMap.get(u.idrol)?.descripcion ?? u.idrol : "-"}</td>
                                     <td className="px-3 py-2 text-right">
                                         <button
                                             onClick={() => openEdit(u)}
@@ -251,8 +243,10 @@ export default function UsuariosPage() {
                                         </button>
                                     </td>
                                 </tr>
-                            ))}
+                            ))
+                        )}
                         </tbody>
+
                     </table>
                 </div>
                 {/* Paginación */}
@@ -305,7 +299,6 @@ export default function UsuariosPage() {
                                     }
                                 />
                             </div>
-
                             {/* Apellido */}
                             <div>
                                 <label className="block text-sm text-slate-600">Apellido</label>
@@ -318,46 +311,31 @@ export default function UsuariosPage() {
                                     }
                                 />
                             </div>
-
-                            {/* Correo */}
-                            <div className="sm:col-span-2">
-                                <label className="block text-sm text-slate-600">Correo</label>
-                                <TextInput
-                                    type="email"
-                                    value={edit.user.correo ?? ""}
-                                    onChange={(e) =>
-                                        setEdit((s) =>
-                                            s.user ? {...s, user: {...s.user, correo: e.target.value}} : s
-                                        )
-                                    }
-                                />
-                            </div>
-
-                            {/* Sexo */}
+                            {/* Estado */}
                             <div>
-                                <label className="block text-sm text-slate-600">Sexo</label>
+                                <label className="block text-sm text-slate-600">Estado</label>
                                 <Select
-                                    value={edit.user.sexo ?? ""}
+                                    value={edit.user.estado ?? ""}
                                     onChange={(e) =>
                                         setEdit((s) =>
-                                            s.user
-                                                ? {...s, user: {...s.user, sexo: e.target.value || null}}
-                                                : s
+                                            s.user ? {...s, user: {...s.user, estado: e.target.value}} : s
                                         )
                                     }
                                 >
-                                    <option value="">(sin sexo)</option>
-                                    <option value="M">Masculino</option>
-                                    <option value="F">Femenino</option>
+                                    <option value="">(sin estado)</option>
+                                    {ESTADOS.map((e) => (
+                                        <option key={e} value={e}>
+                                            {e}
+                                        </option>
+                                    ))}
                                 </Select>
                             </div>
 
-                            {/* Teléfono */}
+                            {/* Rol */}
                             <div>
-                                <label className="block text-sm text-slate-600">Teléfono</label>
-                                <TextInput
-                                    type="number"
-                                    value={edit.user.telefono ?? ""}
+                                <label className="block text-sm text-slate-600">Rol</label>
+                                <Select
+                                    value={edit.user.idrol ?? ""}
                                     onChange={(e) =>
                                         setEdit((s) =>
                                             s.user
@@ -365,16 +343,21 @@ export default function UsuariosPage() {
                                                     ...s,
                                                     user: {
                                                         ...s.user,
-                                                        telefono:
-                                                            e.target.value === "" ? null : Number(e.target.value),
+                                                        idrol: e.target.value ? Number(e.target.value) : null,
                                                     },
                                                 }
                                                 : s
                                         )
                                     }
-                                />
+                                >
+                                    <option value="">(sin rol)</option>
+                                    {(roles ?? []).map((r) => (
+                                        <option key={r.id} value={r.id}>
+                                            {r.descripcion ?? `Rol ${r.id}`}
+                                        </option>
+                                    ))}
+                                </Select>
                             </div>
-
                         </div>
 
                         <div className="flex items-center justify-end gap-2 border-t px-5 py-3">

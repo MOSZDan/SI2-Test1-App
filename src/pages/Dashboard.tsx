@@ -39,9 +39,9 @@ export default function Dashboard() {
             onClick={() => nav("/Usuarios")}
           />
           <Card
-            title="Gestionar Expensas"
-            description="Listado"
-            onClick={() => nav("/expensas")}
+            title="Gestionar Roles"
+            description="Modifiacion de Roles y Permisos a usuarios"
+            onClick={() => nav("/Roles")}
           />
           <Card
             title="Estado de Cuenta"
