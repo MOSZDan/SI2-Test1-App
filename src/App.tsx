@@ -2,6 +2,7 @@
 import {Routes, Route, Navigate, useNavigate} from "react-router-dom";
 import {useEffect} from "react";
 
+
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
@@ -9,6 +10,10 @@ import Usuarios from "./pages/Usuarios";
 import Roles from "./pages/Roles";
 import PrivateRoute from "./components/PrivateRoute";
 import {useAuth} from "./context/AuthContext";
+import AIDetection from "./pages/AIDetection";
+import Propiedades from "./pages/Propiedades";
+import CuotasMultas from "./pages/CuotasMultas";
+import EstadoCuenta from "./pages/EstadoCuenta";
 
 // Ruta que cierra sesión y redirige
 function Logout() {
@@ -49,7 +54,14 @@ export default function App() {
                     </PrivateRoute>
                 }
             />
-
+            <Route
+                path="/cobros/cuotas-multas/"
+                element={
+                    <PrivateRoute>
+                        <CuotasMultas/>
+                    </PrivateRoute>
+                }
+            />
             <Route
                 path="/roles"
                 element={
@@ -59,8 +71,34 @@ export default function App() {
                 }
             />
 
+            <Route
+                path="/propiedades"
+                element={
+                    <PrivateRoute>
+                        <Propiedades/>
+                    </PrivateRoute>
+                }
+            />
+           <Route
+                path="/finanzas/estado"
+                element={
+                    <PrivateRoute>
+                        <EstadoCuenta/>
+                    </PrivateRoute>
+                }
+            />
+
             {/* fallback */}
             <Route path="*" element={<Navigate to="/dashboard" replace/>}/>
+
+            <Route
+                path="/ai-detection"
+                element={
+                    <PrivateRoute>
+                        <AIDetection/>
+                    </PrivateRoute>
+                }
+            />
         </Routes>
     );
 }
