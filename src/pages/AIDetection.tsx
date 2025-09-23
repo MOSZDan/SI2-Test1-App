@@ -561,6 +561,8 @@ export default function AIDetection() {
   // @ts-ignore
   // @ts-ignore
   // @ts-ignore
+  // @ts-ignore
+  // @ts-ignore
   return (
     <div className="min-h-dvh bg-gradient-to-br from-cyan-50 via-blue-50 to-cyan-100">
       <Navbar />

@@ -18,7 +18,6 @@ export default function Casos() {
       <main className="mx-auto max-w-4xl px-4 py-8">
         <div className={`h-28 rounded-3xl bg-gradient-to-r ${pkg.color} mb-6 relative`}>
           <div className="absolute -bottom-3 left-4 h-16 w-16 grid place-items-center rounded-2xl bg-white/95 shadow">
-            <span className="text-2xl">{pkg.emoji}</span>
           </div>
         </div>
 
