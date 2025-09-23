@@ -35,7 +35,6 @@ export default function Casos() {
                 className="rounded-xl bg-white border border-slate-200 p-4 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition"
               >
                 <div className="font-medium text-slate-800">{c.name}</div>
-                <div className="text-xs text-pink-600 mt-1">Ir →</div>
               </Link>
             ) : (
               <div

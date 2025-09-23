@@ -5,14 +5,12 @@ import { PAQUETES } from "../services/data/paquetes";
 function PackageCard({
   title,
   color,
-  emoji,
   count,
   to,
   chips,
 }: {
   title: string;
   color: string;
-  emoji: string;
   count: number;
   to: string;
   chips: string[];
@@ -28,7 +26,6 @@ function PackageCard({
       <div className={`relative h-28 md:h-32 bg-gradient-to-r ${color}`}>
         <div className="absolute inset-y-0 right-0 w-1/3 opacity-20 blur-2xl rounded-full bg-white" />
         <div className="absolute -bottom-3 left-4 h-16 w-16 md:h-20 md:w-20 grid place-items-center rounded-2xl bg-white/95 shadow">
-          <span className="text-2xl md:text-3xl">{emoji}</span>
         </div>
       </div>
 
@@ -50,9 +47,6 @@ function PackageCard({
           ))}
         </div>
 
-        <div className="mt-4 text-pink-600 font-medium text-sm">
-          Ver casos →
-        </div>
       </div>
     </Link>
   );
@@ -75,7 +69,6 @@ export default function Dashboard() {
               key={p.key}
               title={p.title}
               color={p.color}
-              emoji={p.emoji}
               count={p.casos.length}
               chips={p.casos.map((c) => c.name)}
               to={`/casos?pkg=${p.key}`}

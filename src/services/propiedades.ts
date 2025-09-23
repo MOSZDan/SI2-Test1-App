@@ -92,7 +92,7 @@ export const propiedadesAPI = {
 export const perteneceAPI = {
   // Crear vinculación residente-propiedad
   create(token: string, data: PertenecForm) {
-    return http<any>(`${API_PREFIX}/pertenece/`, {
+    return http<never>(`${API_PREFIX}/pertenece/`, {
       method: "POST",
       token,
       body: JSON.stringify(data)
