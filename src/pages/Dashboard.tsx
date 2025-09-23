@@ -1,76 +1,88 @@
-import {useNavigate} from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom";
 import Navbar from "../components/Navbar";
+import { PAQUETES } from "../services/data/paquetes";
 
-function Card({
-                  title,
-                  description,
-                  onClick,
-              }: {
-    title: string;
-    description?: string;
-    onClick: () => void;
+function PackageCard({
+  title,
+  color,
+  emoji,
+  count,
+  to,
+  chips,
+}: {
+  title: string;
+  color: string;
+  emoji: string;
+  count: number;
+  to: string;
+  chips: string[];
 }) {
-    return (
-        <button
-            onClick={onClick}
-            className="w-full rounded-2xl bg-white border border-slate-200 p-5 text-left
+  return (
+    <Link
+      to={to}
+      className="group overflow-hidden rounded-3xl bg-white border border-slate-200 p-0 text-left
                  shadow-sm hover:shadow-md hover:-translate-y-0.5 transition"
-        >
-            <h3 className="text-slate-800 font-semibold">{title}</h3>
-            {description && <p className="mt-1 text-sm text-slate-500">{description}</p>}
-        </button>
-    );
+      aria-label={`Abrir ${title}`}
+    >
+      {/* franja superior tipo PedidosYa */}
+      <div className={`relative h-28 md:h-32 bg-gradient-to-r ${color}`}>
+        <div className="absolute inset-y-0 right-0 w-1/3 opacity-20 blur-2xl rounded-full bg-white" />
+        <div className="absolute -bottom-3 left-4 h-16 w-16 md:h-20 md:w-20 grid place-items-center rounded-2xl bg-white/95 shadow">
+          <span className="text-2xl md:text-3xl">{emoji}</span>
+        </div>
+      </div>
+
+      {/* contenido */}
+      <div className="p-5 md:p-6">
+        <h3 className="text-slate-800 font-semibold text-lg md:text-xl">{title}</h3>
+        <p className="mt-1 text-sm text-slate-500">
+          {count} {count === 1 ? "caso de uso" : "casos de uso"}
+        </p>
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          {chips.slice(0, 3).map((txt) => (
+            <span
+              key={txt}
+              className="rounded-full border text-xs px-3 py-1 text-slate-600 border-slate-200 group-hover:border-slate-300"
+            >
+              {txt}
+            </span>
+          ))}
+        </div>
+
+        <div className="mt-4 text-pink-600 font-medium text-sm">
+          Ver casos →
+        </div>
+      </div>
+    </Link>
+  );
 }
 
 export default function Dashboard() {
-    const nav = useNavigate();
+  const nav = useNavigate();
 
-    return (
-        <div className="min-h-dvh bg-gradient-to-br from-cyan-50 via-blue-50 to-cyan-100 text-slate-800">
-            <Navbar/>
+  return (
+    <div className="min-h-dvh bg-gradient-to-br from-cyan-50 via-blue-50 to-cyan-100 text-slate-800">
+      <Navbar />
 
-            <main className="mx-auto max-w-6xl px-4 py-8">
-                <h1 className="text-2xl font-semibold mb-6">Smart Condominium</h1>
+      <main className="mx-auto max-w-6xl px-4 py-8">
+        <h1 className="text-2xl font-semibold mb-6">Smart Condominium</h1>
 
-                <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-                    <Card
-                        title="Gestionar Usuarios"
-                        description="Alta, edición y listado de usuarios"
-                        onClick={() => nav("/Usuarios")}
-                    />
-                    <Card
-                        title="Gestionar Roles"
-                        description="Modifiacion de Roles y Permisos a usuarios"
-                        onClick={() => nav("/Roles")}
-                    />
-                    <Card
-                        title="Estado de Cuenta"
-                        description="Cargos, pagos, vencidos y mora"
-                        onClick={() => nav("/estado-cuenta")}
-                    />
-                    <Card
-                        title="Reconocimiento IA"
-                        description="Detección facial y de placas vehiculares"
-                        onClick={() => nav("/ai-detection")}
-                    />
-                    <Card
-                        title="Unidades habitacionales"
-                        description="Crear/editar unidades y vincular residentes"
-                        onClick={() => nav("/propiedades")}
-                    />
-                    <Card
-                        title="Cuotas y Multas"
-                        description="Catálogo de expensas y sanciones"
-                        onClick={() => nav("/cobros/cuotas-multas")}
-                    />
-                    <Card
-                      title="Mi Estado de Cuenta"
-                      description="Deudas, multas y comprobantes"
-                      onClick={() => nav("/finanzas/estado")}
-                    />
-
-                </div>
-            </main>
+        {/* Grid de paquetes estilo PedidosYa */}
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {PAQUETES.map((p) => (
+            <PackageCard
+              key={p.key}
+              title={p.title}
+              color={p.color}
+              emoji={p.emoji}
+              count={p.casos.length}
+              chips={p.casos.map((c) => c.name)}
+              to={`/casos?pkg=${p.key}`}
+            />
+          ))}
         </div>
-    );
+      </main>
+    </div>
+  );
 }

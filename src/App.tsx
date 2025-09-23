@@ -14,6 +14,7 @@ import AIDetection from "./pages/AIDetection";
 import Propiedades from "./pages/Propiedades";
 import CuotasMultas from "./pages/CuotasMultas";
 import EstadoCuenta from "./pages/EstadoCuenta";
+import Casos from "./pages/Casos";
 
 // Ruta que cierra sesión y redirige
 function Logout() {
@@ -79,7 +80,7 @@ export default function App() {
                     </PrivateRoute>
                 }
             />
-           <Route
+            <Route
                 path="/finanzas/estado"
                 element={
                     <PrivateRoute>
@@ -96,6 +97,16 @@ export default function App() {
                 element={
                     <PrivateRoute>
                         <AIDetection/>
+                    </PrivateRoute>
+                }
+            />
+
+            {/* página que lista los casos de un paquete */}
+            <Route
+                path="/casos"
+                element={
+                    <PrivateRoute>
+                        <Casos/>
                     </PrivateRoute>
                 }
             />
