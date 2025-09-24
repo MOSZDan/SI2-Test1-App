@@ -5,6 +5,8 @@ import { aiAPI, type FacialProfile } from "../services/ai";
 import Navbar from "../components/Navbar";
 
 type TabType = "recognition" | "registration" | "profiles";
+// Definimos un tipo explícito para los estados de cámara
+type CameraStatus = 'stopped' | 'starting' | 'running' | 'error';
 
 export default function AIDetection() {
   const { token, user } = useAuth();
@@ -27,7 +29,11 @@ export default function AIDetection() {
   const [registering, setRegistering] = useState(false);
 
   // Estado adicional para mejor control de la cámara
-  const [cameraStatus, setCameraStatus] = useState<'stopped' | 'starting' | 'running' | 'error'>('stopped');
+  const [cameraStatus, setCameraStatus] = useState<CameraStatus>('stopped');
+
+  // Variable booleana para simplificar comparaciones
+  const isStartingCamera = cameraStatus === 'starting';
+  const isCameraRunning = cameraStatus === 'running';
 
   // Función de logging detallado
   const log = useCallback((message: string, data?: any) => {
@@ -288,804 +294,582 @@ export default function AIDetection() {
         log("🔗 Reasignando stream al video element");
         videoRef.current.srcObject = stream;
 
-        // Forzar reproducción
-        setTimeout(() => {
-          if (videoRef.current) {
-            videoRef.current.play().then(() => {
-              log("✅ Video reanudado exitosamente");
-              checkVideoState();
-            }).catch((playError) => {
-              log("❌ Error reanudando video:", playError);
-            });
-          }
-        }, 100);
-      }
-    }
-  }, [activeTab, stream, log, checkVideoState]);
-
-  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file && file.type.startsWith('image/')) {
-      setSelectedFile(file);
-      try {
-        const base64 = await aiAPI.fileToBase64(file);
-        setCapturedImage(base64);
-        setResult("Imagen cargada correctamente - Lista para usar");
-        setError(null);
-      } catch {
-        setError('Error procesando la imagen seleccionada');
-      }
-    } else {
-      setError('Por favor selecciona un archivo de imagen válido');
-    }
-  };
-
-  // FUNCIONES DE RECONOCIMIENTO
-  const recognizeFace = async () => {
-    log("👤 Iniciando reconocimiento facial");
-
-    if (!token) {
-      setError("No tienes permisos para usar esta función");
-      return;
-    }
-
-    if (cameraStatus !== 'running') {
-      setError("Necesitas iniciar la cámara primero");
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const imageData = captureImage();
-      log("📡 Enviando imagen para reconocimiento");
-      const response = await aiAPI.recognizeFace(token, imageData);
-      log("📥 Respuesta de reconocimiento:", response);
-
-      if (response.is_resident) {
-        setResult(`Residente identificado: ${response.user?.nombre} (${response.confidence}% confianza)`);
-        setMessage(`Acceso autorizado para ${response.user?.nombre}`);
-      } else {
-        setResult(`Persona no registrada (${response.confidence}% confianza)`);
-        setMessage("Acceso denegado - Persona no identificada en el sistema");
-      }
-    } catch (err: unknown) {
-      let errorMsg = 'Error desconocido en el reconocimiento';
-      if (err instanceof Error) {
-        errorMsg = err.message;
-        log("❌ Error en reconocimiento:", err);
-      }
-      setResult(`Error: ${errorMsg}`);
-      setError(errorMsg);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const detectPlate = async () => {
-    log("🚗 Iniciando detección de placa");
-
-    if (!token) {
-      setError("No tienes permisos para usar esta función");
-      return;
-    }
-
-    if (cameraStatus !== 'running') {
-      setError("Necesitas iniciar la cámara primero");
-      return;
-    }
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const imageData = captureImage();
-      log("📡 Enviando imagen para detección de placa");
-      const response = await aiAPI.detectPlate(token, imageData);
-      log("📥 Respuesta de detección:", response);
-
-      if (response.plate) {
-        const status = response.is_authorized ? 'Autorizada' : 'No autorizada';
-        setResult(`${status}: ${response.plate} (${response.confidence}% confianza)`);
-
-        if (response.is_authorized) {
-          setMessage(`Vehículo autorizado: ${response.plate}`);
-        } else {
-          setMessage(`Vehículo no autorizado: ${response.plate}`);
-        }
-      } else {
-        setResult("No se detectó placa válida en la imagen");
-        setMessage("Intenta capturar una imagen más clara de la placa");
-      }
-    } catch (err: unknown) {
-      let errorMsg = 'Error desconocido en la detección';
-      if (err instanceof Error) {
-        errorMsg = err.message;
-        log("❌ Error en detección:", err);
-      }
-      setResult(`Error: ${errorMsg}`);
-      setError(errorMsg);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // FUNCIONES DE REGISTRO
-  const registerProfile = async () => {
-    if (!token) {
-      setError('No tienes permisos para registrar perfiles');
-      return;
-    }
-
-    let imageToUse: string | null = null;
-
-    if (capturedImage) {
-      imageToUse = capturedImage;
-    } else if (selectedFile) {
-      try {
-        imageToUse = await aiAPI.fileToBase64(selectedFile);
-      } catch {
-        setError('Error procesando el archivo seleccionado');
-        return;
+        // Forzar reproducción después de cambiar de pestaña
+        videoRef.current.play().catch(err => {
+          log("❌ Error reproduciendo video después de cambio de pestaña:", err);
+          setError("Error reiniciando video: " + err.message);
+        });
       }
     }
 
-    if (!imageToUse) {
-      setError('Debes capturar una foto o seleccionar una imagen');
-      return;
-    }
-
-    setRegistering(true);
+    // Limpiar resultados al cambiar de pestaña
     setError(null);
     setMessage(null);
+    setResult("Esperando...");
+
+    // Cargar perfiles solo cuando cambiamos a esa pestaña
+    if (activeTab === "profiles" && token) {
+      loadProfiles();
+    }
+  }, [activeTab, stream, log, token]);
+
+  // Limpiar recursos al desmontar
+  useEffect(() => {
+    return () => {
+      log("♻️ Limpiando recursos al desmontar componente");
+      if (stream) {
+        log("🛑 Deteniendo tracks del stream");
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [stream, log]);
+
+  // Cargar perfiles registrados
+  const loadProfiles = async () => {
+    if (!token) {
+      log("❌ No hay token para cargar perfiles");
+      return;
+    }
 
     try {
-      const response = await aiAPI.registerCurrentUser(token, imageToUse);
+      log("🔄 Cargando perfiles faciales...");
+      setLoading(true);
+      const response = await aiAPI.listProfiles(token);
 
       if (response.success) {
-        setMessage(response.message || 'Perfil facial registrado exitosamente');
-        setCapturedImage(null);
-        setSelectedFile(null);
-        if (fileInputRef.current) fileInputRef.current.value = '';
-        setResult("Perfil registrado correctamente en el sistema");
+        log(`✅ Perfiles cargados: ${response.profiles.length}`);
+        setProfiles(response.profiles);
+      } else {
+        log("❌ Error cargando perfiles:", response.error);
+        setError(response.error || "Error cargando perfiles");
+      }
+    } catch (err) {
+      log("❌ Excepción cargando perfiles:", err);
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("Error desconocido cargando perfiles");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
-        if (activeTab === "profiles") {
-          loadProfiles();
+  // Función para reconocimiento facial
+  const recognizeFace = async () => {
+    if (!capturedImage) {
+      setError("Primero debes capturar una imagen");
+      return;
+    }
+
+    if (!token) {
+      setError("No hay sesión activa");
+      return;
+    }
+
+    try {
+      log("🔄 Iniciando reconocimiento facial...");
+      setLoading(true);
+      setError(null);
+      setResult("Procesando reconocimiento facial...");
+
+      const response = await aiAPI.recognizeFace(token, capturedImage, "Web App");
+      log("✅ Respuesta del reconocimiento:", response);
+
+      let resultText = "";
+
+      if (response.user) {
+        resultText = `¡Persona identificada! ${response.user.nombre} (${response.user.correo}) - Confianza: ${(response.confidence * 100).toFixed(2)}%`;
+      } else {
+        resultText = "Persona no reconocida en el sistema";
+      }
+
+      setResult(resultText);
+    } catch (err) {
+      log("❌ Error en reconocimiento:", err);
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("Error en el reconocimiento facial");
+      }
+      setResult("Error en el proceso de reconocimiento");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Función para detección de placas
+  const detectPlate = async () => {
+    if (!capturedImage) {
+      setError("Primero debes capturar una imagen");
+      return;
+    }
+
+    if (!token) {
+      setError("No hay sesión activa");
+      return;
+    }
+
+    try {
+      log("🔄 Iniciando detección de placa...");
+      setLoading(true);
+      setError(null);
+      setResult("Procesando detección de placa...");
+
+      const response = await aiAPI.detectPlate(token, capturedImage, "Web App");
+      log("✅ Respuesta de la detección de placa:", response);
+
+      let resultText = "";
+
+      if (response.plate) {
+        resultText = `Placa detectada: ${response.plate} - Confianza: ${(response.confidence * 100).toFixed(2)}%`;
+        if (response.is_authorized === true) {
+          resultText += " - Autorizada ✅";
+        } else if (response.is_authorized === false) {
+          resultText += " - No autorizada ❌";
         }
       } else {
-        setError(response.error || 'Error registrando perfil facial');
+        resultText = "No se detectó ninguna placa en la imagen";
       }
-    } catch (err: unknown) {
-      let errorMsg = 'Error registrando perfil facial';
+
+      setResult(resultText);
+    } catch (err) {
+      log("❌ Error en detección de placa:", err);
       if (err instanceof Error) {
-        errorMsg = err.message;
+        setError(err.message);
+      } else {
+        setError("Error en la detección de placa");
       }
-      setError(errorMsg);
+      setResult("Error en el proceso de detección");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Función para registrar rostro del usuario actual
+  const registerFace = async () => {
+    if (!capturedImage) {
+      setError("Primero debes capturar una imagen");
+      return;
+    }
+
+    if (!token) {
+      setError("No hay sesión activa");
+      return;
+    }
+
+    try {
+      log("🔄 Iniciando registro facial...");
+      setRegistering(true);
+      setError(null);
+      setResult("Procesando registro facial...");
+
+      const response = await aiAPI.registerCurrentUser(token, capturedImage);
+      log("✅ Respuesta del registro:", response);
+
+      if (response.success) {
+        setMessage(response.message || "Registro facial exitoso");
+        setResult("Perfil facial registrado correctamente");
+      } else {
+        setError(response.error || "Error en el registro");
+        setResult("Error en el registro facial");
+      }
+    } catch (err) {
+      log("❌ Error en registro facial:", err);
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("Error en el registro facial");
+      }
+      setResult("Error en el proceso de registro");
     } finally {
       setRegistering(false);
     }
   };
 
-  const loadProfiles = async () => {
-    if (!token) return;
+  // Función para subir archivo directamente
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files[0]) {
+      setSelectedFile(files[0]);
+      setCapturedImage(null); // Limpiar imagen capturada si hay
+      setResult(`Archivo seleccionado: ${files[0].name}`);
+    }
+  };
 
-    setLoading(true);
-    setError(null);
+  // Función para registrar con archivo
+  const registerWithFile = async () => {
+    if (!selectedFile) {
+      setError("Primero debes seleccionar un archivo");
+      return;
+    }
+
+    if (!token) {
+      setError("No hay sesión activa");
+      return;
+    }
+
+    if (!user) {
+      setError("No hay información del usuario");
+      return;
+    }
 
     try {
-      const response = await aiAPI.listProfiles(token);
-      setProfiles(response.profiles || []);
-      setMessage(`Se encontraron ${response.profiles?.length || 0} perfiles registrados`);
-    } catch (err: unknown) {
-      let errorMsg = 'Error cargando perfiles';
-      if (err instanceof Error) {
-        errorMsg = err.message;
+      log("🔄 Iniciando registro facial con archivo...");
+      setRegistering(true);
+      setError(null);
+      setResult("Procesando registro facial...");
+
+      // Convertir imagen a base64 primero
+      const base64Image = await aiAPI.fileToBase64(selectedFile);
+
+      // Registrar con base64
+      const response = await aiAPI.registerCurrentUser(token, base64Image);
+
+      log("✅ Respuesta del registro con archivo:", response);
+
+      if (response.success) {
+        setMessage(response.message || "Registro facial exitoso");
+        setResult("Perfil facial registrado correctamente");
+        setSelectedFile(null);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = "";
+        }
+      } else {
+        setError(response.error || "Error en el registro");
+        setResult("Error en el registro facial");
       }
-      setError(errorMsg);
+    } catch (err) {
+      log("❌ Error en registro facial con archivo:", err);
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("Error en el registro facial");
+      }
+      setResult("Error en el proceso de registro");
+    } finally {
+      setRegistering(false);
+    }
+  };
+
+  // Función para eliminar perfil
+  const deleteProfile = async (profileId: number) => {
+    if (!token) {
+      setError("No hay sesión activa");
+      return;
+    }
+
+    if (!confirm("¿Está seguro de eliminar este perfil facial?")) {
+      return;
+    }
+
+    try {
+      log(`🔄 Eliminando perfil facial ID: ${profileId}...`);
+      setLoading(true);
+
+      const response = await aiAPI.deleteProfile(token, profileId);
+
+      log("✅ Respuesta de eliminación:", response);
+      setMessage(response.message || "Perfil eliminado correctamente");
+
+      // Recargar perfiles
+      await loadProfiles();
+
+    } catch (err) {
+      log("❌ Error eliminando perfil:", err);
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("Error al eliminar el perfil");
+      }
     } finally {
       setLoading(false);
     }
   };
 
-  const deleteProfile = async (profileId: number) => {
-    if (!token || !confirm('¿Estás seguro de que quieres eliminar este perfil facial?')) return;
-
-    try {
-      const response = await aiAPI.deleteProfile(token, profileId);
-      if (response.success) {
-        setMessage(response.message || 'Perfil eliminado correctamente');
-        loadProfiles();
-      }
-    } catch (err: unknown) {
-      let errorMsg = 'Error eliminando perfil';
-      if (err instanceof Error) {
-        errorMsg = err.message;
-      }
-      setError(errorMsg);
-    }
-  };
-
-  const clearMessages = () => {
-    setError(null);
-    setMessage(null);
-  };
-
-  const resetCapture = () => {
-    setCapturedImage(null);
-    setSelectedFile(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
-    setResult("Listo para nueva captura");
-    setError(null);
-    setMessage(null);
-  };
-
-  // Cargar perfiles cuando se cambia a esa pestaña
-  useEffect(() => {
-    if (activeTab === "profiles" && token) {
-      loadProfiles();
-    }
-  }, [activeTab, token]);
-
-  // Limpiar errores al cambiar de pestaña
-  useEffect(() => {
-    clearMessages();
-  }, [activeTab]);
-
-  // Cleanup al desmontar el componente
-  useEffect(() => {
-    return () => {
-      if (stream) {
-        stream.getTracks().forEach(track => track.stop());
-      }
-    };
-  }, [stream]);
-
-  // Función para obtener el estado visual de la cámara
-  const getCameraStatusDisplay = () => {
-    switch (cameraStatus) {
-      case 'starting':
-        return { color: 'text-yellow-600', bg: 'bg-yellow-500', text: 'Iniciando...' };
-      case 'running':
-        return { color: 'text-green-600', bg: 'bg-green-500', text: 'Cámara activa' };
-      case 'error':
-        return { color: 'text-red-600', bg: 'bg-red-500', text: 'Error en cámara' };
-      default:
-        return { color: 'text-gray-500', bg: 'bg-gray-400', text: 'Cámara inactiva' };
-    }
-  };
-
-  const statusDisplay = getCameraStatusDisplay();
-
-  // @ts-ignore
-  // @ts-ignore
-  // @ts-ignore
-  // @ts-ignore
-  // @ts-ignore
-  // @ts-ignore
   return (
-    <div className="min-h-dvh bg-gradient-to-br from-cyan-50 via-blue-50 to-cyan-100">
+    <div className="container mx-auto px-4 py-8">
       <Navbar />
 
-      <main className="mx-auto max-w-6xl px-4 py-8">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-semibold">Sistema de Reconocimiento IA</h1>
+      <div className="mb-8">
+        <h1 className="text-3xl font-bold mb-4">Sistema de Detección con IA</h1>
 
-          {/* Botón de debug */}
-          <button
-            onClick={() => {
-              log("🔍 DEBUG INFO - Estado actual del sistema");
-              checkVideoState();
-              log("📊 Estados actuales:", {
-                cameraStatus,
-                streamActive: stream?.active,
-                streamId: stream?.id,
-                videoSrcObject: !!videoRef.current?.srcObject,
-                activeTab
-              });
-            }}
-            className="px-3 py-1 bg-gray-500 text-white rounded text-sm hover:bg-gray-600"
-          >
-            Debug Info (ver consola F12)
-          </button>
+        {/* Tabs de navegación */}
+        <div className="border-b border-gray-200 mb-6">
+          <div className="flex -mb-px space-x-8">
+            <button
+              className={`py-2 px-1 border-b-2 ${
+                activeTab === "recognition"
+                  ? "border-blue-500 text-blue-600"
+                  : "border-transparent hover:text-gray-700 hover:border-gray-300"
+              }`}
+              onClick={() => setActiveTab("recognition")}
+            >
+              Reconocimiento
+            </button>
+            <button
+              className={`py-2 px-1 border-b-2 ${
+                activeTab === "registration"
+                  ? "border-blue-500 text-blue-600"
+                  : "border-transparent hover:text-gray-700 hover:border-gray-300"
+              }`}
+              onClick={() => setActiveTab("registration")}
+            >
+              Registro
+            </button>
+            <button
+              className={`py-2 px-1 border-b-2 ${
+                activeTab === "profiles"
+                  ? "border-blue-500 text-blue-600"
+                  : "border-transparent hover:text-gray-700 hover:border-gray-300"
+              }`}
+              onClick={() => setActiveTab("profiles")}
+            >
+              Perfiles
+            </button>
+          </div>
         </div>
 
-        {/* Mensajes */}
+        {/* Mensajes de feedback */}
         {error && (
-          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-800 flex justify-between items-start">
-            <div className="flex-1">
-              <strong>Error:</strong> {error}
-            </div>
-            <button onClick={clearMessages} className="ml-2 text-red-600 hover:text-red-800 font-bold">×</button>
+          <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700">
+            <strong>Error:</strong> {error}
           </div>
         )}
 
         {message && (
-          <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-xl text-green-800 flex justify-between items-start">
-            <div className="flex-1">
-              <strong>Éxito:</strong> {message}
-            </div>
-            <button onClick={clearMessages} className="ml-2 text-green-600 hover:text-green-800 font-bold">×</button>
+          <div className="mb-4 p-4 bg-green-50 border border-green-200 rounded-xl text-green-700">
+            <strong>✅</strong> {message}
+            <button onClick={() => setMessage(null)} className="ml-2 font-bold">×</button>
           </div>
         )}
 
-        {/* Pestañas */}
-        <div className="mb-6">
-          <div className="border-b border-slate-200">
-            <nav className="-mb-px flex space-x-8">
+        {/* Controles de cámara - Comunes a reconocimiento y registro */}
+        {(activeTab === "recognition" || activeTab === "registration") && (
+          <div className="mb-6">
+            <div className="flex flex-wrap gap-4 mb-4">
               <button
-                onClick={() => setActiveTab("recognition")}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === "recognition"
-                    ? "border-cyan-500 text-cyan-600"
-                    : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+                onClick={startCamera}
+                disabled={isStartingCamera || cameraStatus === 'running'}
+                className={`px-4 py-2 rounded ${
+                  isStartingCamera || cameraStatus === 'running'
+                    ? "bg-gray-300 cursor-not-allowed"
+                    : "bg-blue-500 hover:bg-blue-600 text-white"
                 }`}
               >
-                Reconocimiento
+                {isStartingCamera ? "Iniciando cámara..." : (cameraStatus === 'running' ? "Cámara activa" : "Iniciar cámara")}
               </button>
               <button
-                onClick={() => setActiveTab("registration")}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === "registration"
-                    ? "border-cyan-500 text-cyan-600"
-                    : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
-                }`}
+                onClick={stopCamera}
+                className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded"
+                disabled={cameraStatus === 'stopped'}
               >
-                Registro Facial
+                Detener cámara
               </button>
+
               <button
-                onClick={() => setActiveTab("profiles")}
-                className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                  activeTab === "profiles"
-                    ? "border-cyan-500 text-cyan-600"
-                    : "border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300"
+                onClick={capturePhoto}
+                disabled={cameraStatus !== 'running'}
+                className={`px-4 py-2 rounded ${
+                  cameraStatus !== 'running'
+                    ? "bg-gray-300 cursor-not-allowed"
+                    : "bg-green-500 hover:bg-green-600 text-white"
                 }`}
               >
-                Perfiles
+                Capturar foto
               </button>
-            </nav>
+            </div>
+
+            <div className="mb-4">
+              {isStartingCamera ? (
+                <p className="text-yellow-600">Iniciando cámara, espere por favor...</p>
+              ) : (
+                <p className="text-gray-500">Estado: {cameraStatus}</p>
+              )}
+              <p className="text-gray-700">{result}</p>
+            </div>
           </div>
-        </div>
+        )}
 
-        <div className="bg-white rounded-2xl shadow-lg p-6">
-          {/* Pestaña de Reconocimiento */}
-          {activeTab === "recognition" && (
-            <>
-              <div className="mb-6 flex justify-center">
-                <div className="relative">
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="w-full max-w-lg h-80 bg-black rounded-lg border-2 border-slate-300"
+        {/* Contenedor de video y canvas */}
+        {(activeTab === "recognition" || activeTab === "registration") && (
+          <div className="flex flex-col md:flex-row gap-6">
+            <div className="w-full md:w-1/2">
+              <h2 className="text-lg font-semibold mb-2">Cámara</h2>
+              <div className="bg-black rounded-xl overflow-hidden aspect-video relative">
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  className="w-full h-full object-cover"
+                />
+                {cameraStatus === 'stopped' && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-gray-900/70 text-white">
+                    Cámara no iniciada
+                  </div>
+                )}
+              </div>
+              <canvas ref={canvasRef} className="hidden" />
+            </div>
+
+            <div className="w-full md:w-1/2">
+              <h2 className="text-lg font-semibold mb-2">Imagen capturada</h2>
+              <div className="bg-gray-100 rounded-xl overflow-hidden aspect-video flex items-center justify-center">
+                {capturedImage ? (
+                  <img
+                    src={capturedImage}
+                    alt="Imagen capturada"
+                    className="max-w-full max-h-full object-contain"
                   />
-
-                  {cameraStatus !== 'running' && (
-                    <div className="absolute inset-0 bg-black bg-opacity-50 rounded-lg flex items-center justify-center text-white">
-                      <div className="text-center">
-                        <div className="text-4xl mb-2">📷</div>
-                        <div className="text-lg font-medium">
-                          {cameraStatus === 'starting' ? 'Iniciando cámara...' :
-                           cameraStatus === 'error' ? 'Error en cámara' :
-                           'Cámara desactivada'}
-                        </div>
-                        <div className="text-sm opacity-75">
-                          {cameraStatus === 'stopped' && 'Presiona "Iniciar Cámara" para comenzar'}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <canvas ref={canvasRef} className="hidden" />
-              </div>
-
-              <div className="flex justify-center mb-4">
-                <div className="flex items-center">
-                  <div className={`w-3 h-3 rounded-full mr-2 ${statusDisplay.bg}`}></div>
-                  <span className={`text-sm font-medium ${statusDisplay.color}`}>
-                    {statusDisplay.text}
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-3 justify-center mb-6">
-                {cameraStatus === 'stopped' || cameraStatus === 'error' ? (
-                  <button
-                    onClick={startCamera}
-                    disabled={cameraStatus === 'starting'}
-                    className="px-6 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                  >
-                    {cameraStatus === 'starting' ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        Iniciando...
-                      </>
-                    ) : (
-                      <>
-                        Iniciar Cámara
-                      </>
-                    )}
-                  </button>
                 ) : (
-                  <>
-                    <button
-                      onClick={recognizeFace}
-                      disabled={loading || cameraStatus !== 'running'}
-                      className="px-6 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                    >
-                      {loading ? (
-                        <>
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                          Reconociendo...
-                        </>
-                      ) : (
-                        <>
-                          Reconocer Cara
-                        </>
-                      )}
-                    </button>
-                    <button
-                      onClick={detectPlate}
-                      disabled={loading || cameraStatus !== 'running'}
-                      className="px-6 py-3 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                    >
-                      {loading ? (
-                        <>
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                          Detectando...
-                        </>
-                      ) : (
-                        <>
-                          Detectar Placa
-                        </>
-                      )}
-                    </button>
-                    <button
-                      onClick={stopCamera}
-                      className="px-6 py-3 bg-red-500 text-white rounded-lg hover:bg-red-600 flex items-center gap-2"
-                    >
-                      Detener Cámara
-                    </button>
-                  </>
+                  <p className="text-gray-500">No hay imagen capturada</p>
                 )}
-              </div>
-
-              <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                <h3 className="font-semibold mb-2 text-slate-700">Resultado del Análisis:</h3>
-                <p className="text-sm text-slate-600 font-medium">{result}</p>
-              </div>
-            </>
-          )}
-
-          {/* Pestaña de Registro */}
-          {activeTab === "registration" && (
-            <div className="grid lg:grid-cols-2 gap-6">
-              <div>
-                <h3 className="font-semibold mb-4 text-slate-700">Capturar o subir imagen</h3>
-
-                <div className="mb-4">
-                  <div className="relative">
-                    <video
-                      ref={videoRef}
-                      autoPlay
-                      playsInline
-                      muted
-                      className={`w-full h-48 bg-black rounded-lg border-2 ${cameraStatus === 'running' ? 'border-green-300' : 'border-slate-300'}`}
-                      style={{ display: cameraStatus === 'running' ? 'block' : 'none' }}
-                    />
-
-                    {capturedImage && (
-                      <div className={`${cameraStatus === 'running' ? 'mt-2' : ''}`}>
-                        <img
-                          src={capturedImage}
-                          alt="Imagen capturada"
-                          className="w-full h-48 object-cover rounded-lg border-2 border-cyan-300"
-                        />
-                        <p className="text-center text-sm text-green-600 mt-1 font-medium">Imagen lista para registrar</p>
-                      </div>
-                    )}
-
-                    {cameraStatus !== 'running' && !capturedImage && (
-                      <div className="w-full h-48 bg-slate-100 rounded-lg flex items-center justify-center text-slate-500 border-2 border-dashed border-slate-300">
-                        <div className="text-center">
-                          <div className="text-3xl mb-2">📷</div>
-                          <div>Cámara apagada</div>
-                          <div className="text-xs">Inicia la cámara o sube una imagen</div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex gap-2 mb-4 flex-wrap">
-                  {cameraStatus === 'stopped' || cameraStatus === 'error' ? (
-                    <button
-                      onClick={startCamera}
-                      disabled={cameraStatus === 'starting'}
-                      className="px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 flex items-center gap-1"
-                    >
-                      {cameraStatus === 'starting' ? (
-                        <>
-                          <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin"></div>
-                          Iniciando...
-                        </>
-                      ) : (
-                        <>
-                          Iniciar Cámara
-                        </>
-                      )}
-                    </button>
-                  ) : (
-                    <>
-                      <button
-                        onClick={capturePhoto}
-                        className="px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 flex items-center gap-1"
-                        title="Capturar foto actual de la cámara"
-                      >
-                        Capturar
-                      </button>
-                      <button
-                        onClick={stopCamera}
-                        className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 flex items-center gap-1"
-                      >
-                        Detener
-                      </button>
-                    </>
-                  )}
-
-                  <div className="flex items-center text-sm px-3 py-2 bg-slate-100 rounded-lg">
-                    <div className={`w-2 h-2 rounded-full mr-2 ${statusDisplay.bg}`}></div>
-                    <span className={statusDisplay.color}>
-                      {statusDisplay.text}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="mb-4">
-                  <label className="block font-medium mb-2 text-slate-700">O subir imagen:</label>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileSelect}
-                    className="w-full p-2 border border-slate-300 rounded-lg hover:border-cyan-400 focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500"
-                  />
-                  <p className="text-xs text-slate-500 mt-1">Formatos soportados: JPG, PNG, WebP</p>
-                </div>
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={registerProfile}
-                    disabled={registering || (!capturedImage && !selectedFile)}
-                    className="flex-1 px-4 py-2 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                  >
-                    {registering ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        Registrando...
-                      </>
-                    ) : (
-                      <>
-                        Registrar Mi Perfil
-                      </>
-                    )}
-                  </button>
-
-                  <button
-                    onClick={resetCapture}
-                    className="px-4 py-2 bg-slate-500 text-white rounded-lg hover:bg-slate-600 flex items-center gap-1"
-                  >
-                    Limpiar
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <h3 className="font-semibold mb-4 text-slate-700">Información</h3>
-
-                <div className="bg-blue-50 p-4 rounded-lg mb-4 border border-blue-200">
-                  <h4 className="font-medium text-blue-800 mb-2">¿Cómo registrar tu cara?</h4>
-                  <ul className="text-sm text-blue-700 space-y-1">
-                    <li>• Asegúrate de tener buena iluminación</li>
-                    <li>• Mira directamente a la cámara</li>
-                    <li>• Mantén una expresión neutral</li>
-                    <li>• Evita usar lentes o gorros</li>
-                    <li>• Una sola persona en la imagen</li>
-                    <li>• La imagen debe ser clara y nítida</li>
-                  </ul>
-                </div>
-
-                {user && (
-                  <div className="bg-slate-50 p-4 rounded-lg mb-4 border border-slate-200">
-                    <h4 className="font-medium mb-2 text-slate-700">Usuario actual:</h4>
-                    <p className="text-sm">
-                      <strong>Nombre:</strong> {user.nombre} {user.apellido}
-                    </p>
-                    <p className="text-sm">
-                      <strong>Correo:</strong> {user.correo}
-                    </p>
-                    <p className="text-sm">
-                      <strong>Rol:</strong> {user.rol?.descripcion || 'No definido'}
-                    </p>
-                  </div>
-                )}
-
-                <div className="bg-slate-50 rounded-lg p-4 border border-slate-200">
-                  <h4 className="font-semibold mb-2 text-slate-700">Estado actual:</h4>
-                  <p className="text-sm text-slate-600">{result}</p>
-
-                  <div className="mt-3">
-                    <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-                      <span>Progreso del registro</span>
-                      <span>{capturedImage || selectedFile ? '100%' : '0%'}</span>
-                    </div>
-                    <div className="w-full bg-slate-200 rounded-full h-2">
-                      <div
-                        className={`h-2 rounded-full transition-all duration-300 ${
-                          capturedImage || selectedFile ? 'bg-green-500 w-full' : 'bg-slate-300 w-0'
-                        }`}
-                      ></div>
-                    </div>
-                  </div>
-                </div>
               </div>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* Pestaña de Perfiles */}
-          {activeTab === "profiles" && (
-            <>
-              <div className="flex justify-between items-center mb-6">
-                <h3 className="font-semibold text-slate-700">Perfiles Faciales Registrados</h3>
+        {/* Controles específicos de reconocimiento */}
+        {activeTab === "recognition" && (
+          <div className="mt-6 pt-6 border-t border-gray-200">
+            <h2 className="text-xl font-semibold mb-4">Acciones de reconocimiento</h2>
+
+            <div className="flex flex-wrap gap-4">
+              <button
+                onClick={recognizeFace}
+                disabled={!capturedImage || loading}
+                className={`px-4 py-2 rounded ${
+                  !capturedImage || loading
+                    ? "bg-gray-300 cursor-not-allowed"
+                    : "bg-blue-500 hover:bg-blue-600 text-white"
+                }`}
+              >
+                {loading ? "Procesando..." : "Reconocer rostro"}
+              </button>
+
+              <button
+                onClick={detectPlate}
+                disabled={!capturedImage || loading}
+                className={`px-4 py-2 rounded ${
+                  !capturedImage || loading
+                    ? "bg-gray-300 cursor-not-allowed"
+                    : "bg-purple-500 hover:bg-purple-600 text-white"
+                }`}
+              >
+                {loading ? "Procesando..." : "Detectar placa"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Controles específicos de registro */}
+        {activeTab === "registration" && (
+          <div className="mt-6 pt-6 border-t border-gray-200">
+            <h2 className="text-xl font-semibold mb-4">Registro facial</h2>
+
+            <div className="mb-6">
+              <h3 className="text-lg font-medium mb-2">Registrar con cámara</h3>
+              <button
+                onClick={registerFace}
+                disabled={!capturedImage || registering}
+                className={`px-4 py-2 rounded ${
+                  !capturedImage || registering
+                    ? "bg-gray-300 cursor-not-allowed"
+                    : "bg-green-500 hover:bg-green-600 text-white"
+                }`}
+              >
+                {registering ? "Registrando..." : "Registrar mi rostro"}
+              </button>
+              <p className="text-sm text-gray-500 mt-2">
+                Usa esta opción para registrar tu rostro actual en el sistema.
+              </p>
+            </div>
+
+            <div className="mb-6">
+              <h3 className="text-lg font-medium mb-2">Registrar con archivo</h3>
+              <input
+                type="file"
+                ref={fileInputRef}
+                onChange={handleFileChange}
+                accept="image/*"
+                className="mb-3"
+              />
+              <div>
                 <button
-                  onClick={loadProfiles}
-                  disabled={loading}
-                  className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50 flex items-center gap-2"
+                  onClick={registerWithFile}
+                  disabled={!selectedFile || registering}
+                  className={`px-4 py-2 rounded ${
+                    !selectedFile || registering
+                      ? "bg-gray-300 cursor-not-allowed"
+                      : "bg-green-500 hover:bg-green-600 text-white"
+                  }`}
                 >
-                  {loading ? (
-                    <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      Cargando...
-                    </>
-                  ) : (
-                    <>
-                      Actualizar
-                    </>
-                  )}
+                  {registering ? "Registrando..." : "Registrar con archivo"}
                 </button>
               </div>
-
-              {loading ? (
-                <div className="text-center py-12">
-                  <div className="inline-flex items-center justify-center w-16 h-16 bg-blue-100 rounded-full mb-4">
-                    <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-                  </div>
-                  <p className="text-slate-500">Cargando perfiles registrados...</p>
-                </div>
-              ) : profiles.length === 0 ? (
-                <div className="text-center py-12">
-                  <div className="text-6xl mb-4">👤</div>
-                  <h4 className="text-lg font-medium text-slate-700 mb-2">No hay perfiles registrados</h4>
-                  <p className="text-slate-500 mb-6">
-                    Aún no se han registrado perfiles faciales en el sistema.
-                  </p>
-                  <button
-                    onClick={() => setActiveTab("registration")}
-                    className="px-6 py-3 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 inline-flex items-center gap-2"
-                  >
-                    Registrar mi perfil
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <div className="bg-gradient-to-r from-cyan-50 to-blue-50 rounded-lg p-4 mb-6 border border-cyan-200">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h4 className="font-medium text-cyan-800">Estadísticas del Sistema</h4>
-                        <p className="text-sm text-cyan-600">
-                          Total de perfiles registrados: <strong>{profiles.length}</strong>
-                        </p>
-                      </div>
-                      <div className="text-3xl">👥</div>
-                    </div>
-                  </div>
-
-                  <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {profiles.map((profile) => (
-                      <div key={profile.id} className="border border-slate-200 rounded-xl p-4 hover:shadow-md transition-shadow bg-white">
-                        <div className="mb-4">
-                          {profile.image_url ? (
-                            <img
-                              src={profile.image_url}
-                              alt={`Perfil de ${profile.user_name}`}
-                              className="w-full h-32 object-cover rounded-lg border-2 border-slate-200"
-                              onError={(e) => {
-                                const target = e.target as HTMLImageElement;
-                                target.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iI2Y4ZmFmYyIvPjx0ZXh0IHg9IjUwIiB5PSI1MCIgZm9udC1mYW1pbHk9IkFyaWFsIiBmb250LXNpemU9IjE0IiBmaWxsPSIjNjQ3NDhiIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+SW1hZ2VuIG5vIGRpc3BvbmlibGU8L3RleHQ+PC9zdmc+';
-                              }}
-                            />
-                          ) : (
-                            <div className="w-full h-32 bg-slate-100 rounded-lg flex items-center justify-center border-2 border-dashed border-slate-300">
-                              <div className="text-center text-slate-500">
-                                <div className="text-2xl mb-1">👤</div>
-                                <div className="text-xs">Sin imagen</div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="space-y-2">
-                          <h4 className="font-medium text-slate-800 truncate">
-                            {profile.user_name}
-                          </h4>
-                          <p className="text-sm text-slate-500 truncate">
-                            {profile.user_email}
-                          </p>
-                          <p className="text-xs text-slate-400">
-                            Registrado: {new Date(profile.fecha_registro).toLocaleDateString('es-ES', {
-                              year: 'numeric',
-                              month: 'short',
-                              day: 'numeric'
-                            })}
-                          </p>
-
-                          <div className="flex items-center gap-2">
-                            <div className={`w-2 h-2 rounded-full ${profile.activo ? 'bg-green-500' : 'bg-red-500'}`}></div>
-                            <span className={`text-xs font-medium ${profile.activo ? 'text-green-600' : 'text-red-600'}`}>
-                              {profile.activo ? 'Activo' : 'Inactivo'}
-                            </span>
-                          </div>
-                        </div>
-
-                        <button
-                          onClick={() => deleteProfile(profile.id)}
-                          className="w-full mt-4 px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 text-sm font-medium transition-colors flex items-center justify-center gap-1"
-                        >
-                          Eliminar perfil
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="mt-8 text-center">
-                    <button
-                      onClick={() => setActiveTab("registration")}
-                      className="px-6 py-3 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 inline-flex items-center gap-2 font-medium"
-                    >
-                      Registrar nuevo perfil
-                    </button>
-                  </div>
-                </>
-              )}
-            </>
-          )}
-        </div>
-
-        <div className="mt-8 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-xl p-6 border border-blue-200">
-          <h3 className="font-semibold text-blue-800 mb-3">Consejos para un mejor rendimiento</h3>
-          <div className="grid md:grid-cols-2 gap-4 text-sm text-blue-700">
-            <div>
-              <h4 className="font-medium mb-2">Para el reconocimiento facial:</h4>
-              <ul className="space-y-1">
-                <li>• Mantén buena iluminación frontal</li>
-                <li>• Evita sombras en el rostro</li>
-                <li>• Mira directamente a la cámara</li>
-                <li>• Mantén el rostro centrado</li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-medium mb-2">Para la detección de placas:</h4>
-              <ul className="space-y-1">
-                <li>• Asegúrate de que la placa sea visible</li>
-                <li>• Evita reflejos en la placa</li>
-                <li>• Mantén una distancia adecuada</li>
-                <li>• La placa debe estar limpia</li>
-              </ul>
             </div>
           </div>
-        </div>
-      </main>
+        )}
+
+        {/* Listado de perfiles */}
+        {activeTab === "profiles" && (
+          <div>
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold">Perfiles faciales registrados</h2>
+              <button
+                onClick={loadProfiles}
+                disabled={loading}
+                className="px-3 py-1 bg-gray-200 hover:bg-gray-300 rounded text-sm"
+              >
+                {loading ? "Cargando..." : "Recargar"}
+              </button>
+            </div>
+
+            {loading ? (
+              <div className="p-12 text-center text-gray-500">Cargando perfiles...</div>
+            ) : profiles.length > 0 ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+                {profiles.map((profile) => (
+                  <div key={profile.id} className="border rounded-xl overflow-hidden bg-white shadow-sm">
+                    <div className="aspect-square bg-gray-100">
+                      {profile.image_url ? (
+                        <img
+                          src={profile.image_url}
+                          alt={`Perfil de ${profile.user_name}`}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-gray-400">
+                          No hay imagen
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-4">
+                      <h3 className="font-medium">{profile.user_name}</h3>
+                      <p className="text-sm text-gray-500">{profile.user_email}</p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        Registrado: {new Date(profile.fecha_registro).toLocaleDateString()}
+                      </p>
+                      <div className="mt-3 flex justify-end">
+                        <button
+                          onClick={() => deleteProfile(profile.id)}
+                          className="px-3 py-1 bg-red-100 text-red-700 rounded hover:bg-red-200 text-sm"
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-8 text-center text-gray-500 border rounded-xl bg-gray-50">
+                No hay perfiles faciales registrados
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
