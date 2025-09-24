@@ -122,7 +122,7 @@ export default function EstadoCuenta() {
                 showMonthYearPicker
                 showFullMonthYearPicker
                 showFourColumnMonthYearPicker
-                onChangeRaw={(e) => e.preventDefault()}
+                onChangeRaw={(e) => e && e.preventDefault()}
                 onKeyDown={(e) => e.preventDefault()}
                 // Opcionales:
                 maxDate={new Date()} // para no permitir meses futuros
