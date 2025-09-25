@@ -139,7 +139,7 @@ export default function Propiedades() {
       const allUsers = Array.isArray(data) ? data : data.results || [];
 
       // Filtrar solo copropietarios e inquilinos
-      const residentes = allUsers.filter((user) => user.idrol === 1 || user.idrol === 2);
+      const residentes = allUsers.filter((user: Usuario) => user.idrol === 1 || user.idrol === 2);
       setUsuarios(residentes);
     } catch (err) {
       console.error("Error cargando usuarios:", err);
