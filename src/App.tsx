@@ -2,7 +2,6 @@
 import {Routes, Route, Navigate, useNavigate} from "react-router-dom";
 import {useEffect} from "react";
 
-
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
@@ -15,6 +14,8 @@ import Propiedades from "./pages/Propiedades";
 import CuotasMultas from "./pages/CuotasMultas";
 import EstadoCuenta from "./pages/EstadoCuenta";
 import Casos from "./pages/Casos";
+import ComunicadosList from "./pages/ComunicadosList";
+import ComunicadosPublicar from "./pages/ComunicadosPublicar";
 
 // Ruta que cierra sesión y redirige
 function Logout() {
@@ -55,6 +56,7 @@ export default function App() {
                     </PrivateRoute>
                 }
             />
+
             <Route
                 path="/cobros/cuotas-multas/"
                 element={
@@ -63,6 +65,7 @@ export default function App() {
                     </PrivateRoute>
                 }
             />
+
             <Route
                 path="/roles"
                 element={
@@ -80,6 +83,7 @@ export default function App() {
                     </PrivateRoute>
                 }
             />
+
             <Route
                 path="/finanzas/estado"
                 element={
@@ -89,8 +93,22 @@ export default function App() {
                 }
             />
 
-            {/* fallback */}
-            <Route path="*" element={<Navigate to="/dashboard" replace/>}/>
+            <Route
+                path="/comunicados"
+                element={
+                    <PrivateRoute>
+                        <ComunicadosList/>
+                    </PrivateRoute>
+                }
+            />
+            <Route
+                path="/comunicados/publicar"
+                element={
+                    <PrivateRoute>
+                        <ComunicadosPublicar/>
+                    </PrivateRoute>
+                }
+            />
 
             <Route
                 path="/ai-detection"
@@ -110,6 +128,9 @@ export default function App() {
                     </PrivateRoute>
                 }
             />
+
+            {/* fallback */}
+            <Route path="*" element={<Navigate to="/dashboard" replace/>}/>
         </Routes>
     );
 }

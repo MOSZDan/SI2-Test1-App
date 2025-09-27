@@ -3,7 +3,7 @@ export type Caso = { name: string; to?: string };
 export type Paquete = {
   key: string;
   title: string;
-  color: string; // tailwind gradient (from... to...)
+  color: string;
   casos: Caso[];
 };
 
@@ -23,7 +23,7 @@ export const PAQUETES: Paquete[] = [
     color: "from-sky-500 to-cyan-500",
     casos: [
       { name: "Unidades/Propiedades", to: "/propiedades" },
-      { name: "Cuotas y multas", to: "/cobros/cuotas-multas" },
+      { name: "Cuotas y multas", to: "/cobros/cuotas-multas/" },
       { name: "Estado de cuenta", to: "/finanzas/estado" },
     ],
   },
@@ -41,8 +41,8 @@ export const PAQUETES: Paquete[] = [
     title: "Comunicación y Reservas",
     color: "from-indigo-500 to-blue-500",
     casos: [
-      { name: "Publicar avisos", /* to: "/comunicados/publicar" */ },
-      { name: "Consultar avisos", /* to: "/comunicados" */ },
+      { name: "Publicar avisos", to: "/comunicados/publicar" },
+      { name: "Consultar avisos", to: "/comunicados" },
       { name: "Configurar áreas comunes" },
       { name: "Gestionar reservas" },
       { name: "Pagar reserva" },

@@ -1,8 +1,6 @@
 // src/services/api.ts
 const RAW_BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8000";
-// ❗ quita barras del final: "http://127.0.0.1:8000/"
 export const API_BASE = RAW_BASE.replace(/\/+$/, "");
-// Prefijo común para todos los endpoints DRF
 export const API_PREFIX = `${API_BASE}/api`;
 
 const AUTH_SCHEME = "Token"; // DRF TokenAuthentication
@@ -41,6 +39,13 @@ export type UserDTO = {
   rol?: { id: number; descripcion: string; tipo?: string; estado?: any } | null;
 };
 
+export type Paged<T> = {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
+};
+
 /* ========= Auth ========= */
 export type LoginResponse = { token: string; user: UserDTO };
 export type RegisterPayload = {
@@ -50,19 +55,67 @@ export type RegisterResponse =
   | { ok: true; user?: UserDTO; id?: number; detail?: string }
   | { ok: false; detail?: string; fields?: Record<string, string | string[]> };
 
+/* ========= Comunicados ========= */
+export type Prioridad = "normal" | "importante" | "urgente";
+export type Destinatarios = "todos" | "copropietarios" | "inquilinos" | "personal" | "usuarios";
+
+export type ComunicadoDTO = {
+  id: number;
+  tipo: Prioridad;           // en BD usas 'tipo' como prioridad
+  fecha: string | null;      // YYYY-MM-DD
+  hora: string | null;       // HH:MM:SS
+  titulo: string;
+  contenido: string;
+  url: string | null;
+  estado: string;            // 'publicado' | 'borrador' | etc.
+  codigo_usuario: number | null; // autor
+};
+
+export type ComunicadoPayload = {
+  titulo: string;
+  contenido: string;
+  prioridad: Prioridad;
+  destinatarios: Destinatarios;
+  usuario_ids?: number[];
+  fecha_publicacion?: string; // YYYY-MM-DD (opcional)
+  hora_publicacion?: string;  // HH:MM:SS (opcional)
+};
+
+export type ComunicadoPublishResponse = {
+  comunicado: ComunicadoDTO;
+  envio: { total: number; enviados: number; errores: number };
+  mensaje: string;
+};
+
+/* ========= Helpers ========= */
+function buildQuery(params?: Record<string, any>) {
+  const q = new URLSearchParams();
+  if (!params) return "";
+  Object.entries(params).forEach(([k, v]) => {
+    if (v === undefined || v === null || v === "") return;
+    q.set(k, String(v));
+  });
+  const s = q.toString();
+  return s ? `?${s}` : "";
+}
+
+/* ========= API ========= */
 export const api = {
+  // --- Auth ---
   login(email: string, password: string) {
     return http<LoginResponse>(`${API_PREFIX}/auth/login/`, {
       method: "POST",
       body: JSON.stringify({ email, password }),
     });
   },
+
   register(payload: RegisterPayload) {
     return http<RegisterResponse>(`${API_PREFIX}/auth/register/`, {
       method: "POST",
       body: JSON.stringify(payload),
     });
   },
+
   logout(token: string) {
     return http<{ detail?: string }>(`${API_PREFIX}/auth/logout/`, {
       method: "POST",
@@ -70,12 +123,63 @@ export const api = {
     });
   },
 
-  // ejemplo
-  usuarios(token: string, params?: { search?: string; page?: number }) {
-    const q = new URLSearchParams();
-    if (params?.search) q.set("search", params.search);
-    if (params?.page) q.set("page", String(params.page));
-    const url = `${API_PREFIX}/usuarios/${q.toString() ? `?${q}` : ""}`;
-    return http<{ results: UserDTO[]; count: number } | UserDTO[]>(url, { token });
+  // --- Usuarios (listado general; resp paginado de DRF) ---
+  usuarios(
+    token: string,
+    params?: { search?: string; page?: number; page_size?: number; estado?: string; idrol?: number }
+  ) {
+    const q = buildQuery(params);
+    const url = `${API_PREFIX}/usuarios/${q}`;
+    return http<Paged<UserDTO> | UserDTO[]>(url, { token });
+  },
+
+  // --- Usuarios activos (atajo) ---
+  usuariosActivos(token: string, params?: { search?: string; page?: number; page_size?: number; idrol?: number }) {
+    const q = buildQuery({ estado: "activo", ...(params || {}) });
+    return http<Paged<UserDTO>>(`${API_PREFIX}/usuarios/${q}`, { token });
+  },
+
+  // --- Roles activos (para armar selects de rol/tipo) ---
+  listRolesActivos(token: string) {
+    // tu RolViewSet permite filtrar por 'tipo' y 'estado'
+    const q = buildQuery({ estado: "activo", ordering: "id" });
+    return http<Paged<{ id: number; descripcion: string; tipo?: string; estado?: string }>>(
+      `${API_PREFIX}/roles/${q}`,
+      { token }
+    );
+  },
+
+  // --- Usuarios por un rol específico (usa filterset idrol) ---
+  usuariosPorRol(token: string, idrol: number, page_size = 300) {
+    const q = buildQuery({ estado: "activo", idrol, page_size });
+    return http<Paged<UserDTO>>(`${API_PREFIX}/usuarios/${q}`, { token });
+  },
+
+  // --- Usuarios por varios roles (combina en cliente) ---
+  async usuariosPorRoles(token: string, idroles: number[], page_size = 300) {
+    const chunks = await Promise.all(
+      idroles.map((id) => this.usuariosPorRol(token, id, page_size))
+    );
+    const map = new Map<number, UserDTO>();
+    chunks.forEach((res) => (res.results || []).forEach((u) => map.set(u.codigo, u)));
+    return Array.from(map.values());
+  },
+
+  // --- Comunicados: publicar ---
+  publicarComunicado(token: string, payload: ComunicadoPayload) {
+    return http<ComunicadoPublishResponse>(`${API_PREFIX}/comunicados/publicar/`, {
+      method: "POST",
+      token,
+      body: JSON.stringify(payload),
+    });
+  },
+
+  // --- Comunicados: listar (paginado DRF) ---
+  comunicados(
+    token: string,
+    params?: { estado?: string; ordering?: string; page?: number; page_size?: number; search?: string }
+  ) {
+    const q = buildQuery(params);
+    return http<Paged<ComunicadoDTO>>(`${API_PREFIX}/comunicados/${q}`, { token });
   },
 };
