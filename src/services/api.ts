@@ -1,32 +1,86 @@
-// src/services/api.ts
-const RAW_BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8000";
-export const API_BASE = RAW_BASE.replace(/\/+$/, "");
+// Configuración central de la API
+export const API_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000";
 export const API_PREFIX = `${API_BASE}/api`;
 
-const AUTH_SCHEME = "Token"; // DRF TokenAuthentication
-type HttpOpts = RequestInit & { token?: string };
-
-export async function http<T>(url: string, opts: HttpOpts = {}): Promise<T> {
-  const headers: Record<string, string> = { ...(opts.headers as any) };
-  if (opts.token) headers.Authorization = `${AUTH_SCHEME} ${opts.token}`;
-  if (opts.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
-
-  const res = await fetch(url, { ...opts, headers });
-  const ct = res.headers.get("content-type") || "";
-  const data = ct.includes("application/json") ? await res.json() : await res.text();
-
-  if (!res.ok) {
-    const msg =
-      typeof data === "string"
-        ? data
-        : data?.detail ||
-          (data && typeof data === "object" ? JSON.stringify(data) : "Error");
-    throw new Error(msg);
-  }
-  return data as T;
+// Tipos para las respuestas de la API
+export interface ApiError {
+  detail?: string;
+  message?: string;
+  errors?: Record<string, string[]>;
 }
 
-/* ========= Tipos comunes ========= */
+// Función HTTP central con mejor manejo de errores
+export async function http<T>(
+  url: string,
+  options: {
+    method?: string;
+    token?: string;
+    body?: string;
+    headers?: Record<string, string>;
+  } = {}
+): Promise<T> {
+  const { method = "GET", token, body, headers = {} } = options;
+
+  const config: RequestInit = {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      ...headers,
+    },
+  };
+
+  if (token) {
+    config.headers = {
+      ...config.headers,
+      Authorization: `Token ${token}`,
+    };
+  }
+
+  if (body && method !== "GET") {
+    config.body = body;
+  }
+
+  try {
+    const response = await fetch(url, config);
+
+    if (!response.ok) {
+      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+
+      try {
+        const errorData = await response.json();
+        if (errorData.detail) {
+          errorMessage = errorData.detail;
+        } else if (errorData.message) {
+          errorMessage = errorData.message;
+        } else if (errorData.errors) {
+          const firstError = Object.values(errorData.errors)[0];
+          if (Array.isArray(firstError) && firstError.length > 0) {
+            errorMessage = firstError[0];
+          }
+        }
+      } catch {
+        // Si no se puede parsear el JSON de error, usar el mensaje por defecto
+      }
+
+      throw new Error(errorMessage);
+    }
+
+    // Manejar respuestas vacías (204 No Content)
+    if (response.status === 204) {
+      return {} as T;
+    }
+
+    return await response.json();
+  } catch (error) {
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error("Error de conexión con el servidor");
+  }
+}
+
+// ========= TIPOS PRINCIPALES =========
+
 export type UserDTO = {
   codigo: number;
   nombre: string;
@@ -39,14 +93,358 @@ export type UserDTO = {
   rol?: { id: number; descripcion: string; tipo?: string; estado?: any } | null;
 };
 
-export type Paged<T> = {
-  count: number;
-  next: string | null;
-  previous: string | null;
-  results: T[];
+export type Usuario = {
+  codigo: number;
+  nombre?: string | null;
+  apellido?: string | null;
+  correo?: string | null;
+  contrasena?: string | null;
+  sexo?: string | null;
+  telefono?: number | null;
+  estado?: string | null;
+  idrol?: number | null;
+  rol?: {
+    descripcion: string;
+    tipo: string;
+  };
 };
 
-/* ========= Auth ========= */
+export type UsersListResult = {
+  items: Usuario[];
+  next: string | null;
+  previous: string | null;
+  count?: number;
+};
+
+export type Rol = {
+  id: number;
+  descripcion: string;
+  tipo: string;
+  estado: any;
+};
+
+export type Propiedad = {
+  codigo: number;
+  tamano_m2: number;
+  nro_casa: number;
+  piso: number;
+  descripcion: string;
+  propietario_actual?: {
+    codigo: number;
+    nombre: string;
+    apellido: string;
+    correo: string;
+    tipo_rol: string;
+    fecha_ini: string;
+    fecha_fin?: string;
+  };
+};
+
+export type Pago = {
+  id: number;
+  tipo: string;
+  descripcion: string;
+  monto: number;
+  estado?: string;
+};
+
+export type PagoForm = {
+  tipo: string;
+  descripcion: string;
+  monto: number;
+  estado?: string;
+};
+
+export type Multa = {
+  id: number;
+  descripcion: string;
+  monto: number;
+  estado?: string;
+};
+
+export type MultaForm = {
+  descripcion: string;
+  monto: number;
+  estado?: string;
+};
+
+// ========= FUNCIONES DE UTILIDAD =========
+
+function buildQuery(params: Record<string, any>) {
+  const q = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== "") q.set(k, String(v));
+  });
+  return q.toString();
+}
+
+// ========= API DE AUTENTICACIÓN =========
+
+export const api = {
+  async login(email: string, password: string): Promise<{ token: string; user: any }> {
+    const response = await http<{ token: string; user: any }>(`${API_BASE}/api-token-auth/`, {
+      method: "POST",
+      body: JSON.stringify({ username: email, password }),
+    });
+    return response;
+  },
+
+  async register(userData: {
+    nombre: string;
+    apellido: string;
+    correo: string;
+    contrasena: string;
+    sexo: "M" | "F";
+    telefono?: string;
+  }): Promise<{ message: string }> {
+    const response = await http<{ message: string }>(`${API_PREFIX}/register/`, {
+      method: "POST",
+      body: JSON.stringify(userData),
+    });
+    return response;
+  },
+
+  async getProfile(token: string): Promise<any> {
+    return http<any>(`${API_PREFIX}/profile/`, { token });
+  },
+};
+
+// ========= API DE USUARIOS =========
+
+export async function listUsers(opts: {
+  token: string;
+  search?: string;
+  estado?: string;
+  idrol?: string | number;
+  ordering?: string;
+  page?: number;
+}): Promise<UsersListResult> {
+  const { token, ...query } = opts;
+  const qs = buildQuery(query);
+  const url = `${API_PREFIX}/usuarios/${qs ? `?${qs}` : ""}`;
+  const data = await http<any>(url, { token });
+  if (Array.isArray(data)) return { items: data as Usuario[], next: null, previous: null, count: data.length };
+  return { items: (data.results ?? []) as Usuario[], next: data.next ?? null, previous: data.previous ?? null, count: data.count };
+}
+
+export function getUser({ token, codigo }: { token: string; codigo: number }) {
+  return http<Usuario>(`${API_PREFIX}/usuarios/${codigo}/`, { token });
+}
+
+export function patchUser({ token, codigo, payload }: { token: string; codigo: number; payload: Partial<Usuario> }) {
+  return http<Usuario>(`${API_PREFIX}/usuarios/${codigo}/`, { method: "PATCH", token, body: JSON.stringify(payload) });
+}
+
+export function createUser({ token, payload }: { token: string; payload: Omit<Usuario, 'codigo'> }) {
+  return http<Usuario>(`${API_PREFIX}/usuarios/`, { method: "POST", token, body: JSON.stringify(payload) });
+}
+
+export function deleteUser({ token, codigo }: { token: string; codigo: number }) {
+  return http<void>(`${API_PREFIX}/usuarios/${codigo}/`, { method: "DELETE", token });
+}
+
+// ========= API DE ROLES =========
+
+export async function listRoles(token: string): Promise<Rol[]> {
+  const data = await http<any>(`${API_PREFIX}/roles/`, { token });
+  return Array.isArray(data) ? data : data.results || [];
+}
+
+export function getRol({ token, id }: { token: string; id: number }) {
+  return http<Rol>(`${API_PREFIX}/roles/${id}/`, { token });
+}
+
+export function createRol({ token, payload }: { token: string; payload: Omit<Rol, 'id'> }) {
+  return http<Rol>(`${API_PREFIX}/roles/`, { method: "POST", token, body: JSON.stringify(payload) });
+}
+
+export function patchRol({ token, id, payload }: { token: string; id: number; payload: Partial<Rol> }) {
+  return http<Rol>(`${API_PREFIX}/roles/${id}/`, { method: "PATCH", token, body: JSON.stringify(payload) });
+}
+
+export function deleteRol({ token, id }: { token: string; id: number }) {
+  return http<void>(`${API_PREFIX}/roles/${id}/`, { method: "DELETE", token });
+}
+
+// ========= API DE PROPIEDADES =========
+
+export async function listPropiedades(opts: {
+  token: string;
+  include_residents?: boolean;
+  search?: string;
+  piso?: number;
+  page?: number;
+}): Promise<Propiedad[]> {
+  const { token, ...query } = opts;
+  const qs = buildQuery(query);
+  const url = `${API_PREFIX}/propiedades/${qs ? `?${qs}` : ""}`;
+  const data = await http<any>(url, { token });
+  return Array.isArray(data) ? data : data.results || [];
+}
+
+export function getPropiedad({ token, codigo }: { token: string; codigo: number }) {
+  return http<Propiedad>(`${API_PREFIX}/propiedades/${codigo}/`, { token });
+}
+
+export function createPropiedad({ token, payload }: {
+  token: string;
+  payload: { nro_casa: number; piso: number; tamano_m2: number; descripcion: string }
+}) {
+  return http<Propiedad>(`${API_PREFIX}/propiedades/`, { method: "POST", token, body: JSON.stringify(payload) });
+}
+
+export function patchPropiedad({ token, codigo, payload }: {
+  token: string;
+  codigo: number;
+  payload: Partial<{ nro_casa: number; piso: number; tamano_m2: number; descripcion: string }>
+}) {
+  return http<Propiedad>(`${API_PREFIX}/propiedades/${codigo}/`, { method: "PATCH", token, body: JSON.stringify(payload) });
+}
+
+export function deletePropiedad({ token, codigo }: { token: string; codigo: number }) {
+  return http<void>(`${API_PREFIX}/propiedades/${codigo}/`, { method: "DELETE", token });
+}
+
+export function vincularResidente({ token, payload }: {
+  token: string;
+  payload: {
+    codigo_usuario: number;
+    codigo_propiedad: number;
+    fecha_ini: string;
+    fecha_fin?: string | null;
+  }
+}) {
+  return http<any>(`${API_PREFIX}/pertenece/`, { method: "POST", token, body: JSON.stringify(payload) });
+}
+
+// ========= API DE PAGOS =========
+
+export const pagosAPI = {
+  async list(token: string): Promise<Pago[]> {
+    const data = await http<any>(`${API_PREFIX}/pagos/`, { token });
+    return Array.isArray(data) ? data : data.results || [];
+  },
+
+  async get(token: string, id: number): Promise<Pago> {
+    return http<Pago>(`${API_PREFIX}/pagos/${id}/`, { token });
+  },
+
+  async create(token: string, payload: PagoForm): Promise<Pago> {
+    return http<Pago>(`${API_PREFIX}/pagos/`, { method: "POST", token, body: JSON.stringify(payload) });
+  },
+
+  async update(token: string, id: number, payload: Partial<PagoForm>): Promise<Pago> {
+    return http<Pago>(`${API_PREFIX}/pagos/${id}/`, { method: "PATCH", token, body: JSON.stringify(payload) });
+  },
+
+  async delete(token: string, id: number): Promise<void> {
+    return http<void>(`${API_PREFIX}/pagos/${id}/`, { method: "DELETE", token });
+  }
+};
+
+// ========= API DE MULTAS =========
+
+export const multasAPI = {
+  async list(token: string): Promise<Multa[]> {
+    const data = await http<any>(`${API_PREFIX}/multas/`, { token });
+    return Array.isArray(data) ? data : data.results || [];
+  },
+
+  async get(token: string, id: number): Promise<Multa> {
+    return http<Multa>(`${API_PREFIX}/multas/${id}/`, { token });
+  },
+
+  async create(token: string, payload: MultaForm): Promise<Multa> {
+    return http<Multa>(`${API_PREFIX}/multas/`, { method: "POST", token, body: JSON.stringify(payload) });
+  },
+
+  async update(token: string, id: number, payload: Partial<MultaForm>): Promise<Multa> {
+    return http<Multa>(`${API_PREFIX}/multas/${id}/`, { method: "PATCH", token, body: JSON.stringify(payload) });
+  },
+
+  async delete(token: string, id: number): Promise<void> {
+    return http<void>(`${API_PREFIX}/multas/${id}/`, { method: "DELETE", token });
+  }
+};
+
+// ========= API DE ESTADO DE CUENTA =========
+
+export async function getEstadoCuenta(token: string, mes: string) {
+  return http<any>(`${API_PREFIX}/estado-cuenta/?mes=${mes}`, { token });
+}
+
+export async function descargarComprobante(token: string, id: number) {
+  const response = await fetch(`${API_PREFIX}/comprobante/${id}/`, {
+    headers: { Authorization: `Token ${token}` },
+  });
+
+  if (!response.ok) {
+    throw new Error("No se pudo descargar el comprobante");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `comprobante_${id}.pdf`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ========= API DE CASOS/INCIDENTES =========
+
+export async function listCasos(token: string) {
+  const data = await http<any>(`${API_PREFIX}/casos/`, { token });
+  return Array.isArray(data) ? data : data.results || [];
+}
+
+export function createCaso({ token, payload }: {
+  token: string;
+  payload: { titulo: string; descripcion: string; tipo: string; prioridad?: string }
+}) {
+  return http<any>(`${API_PREFIX}/casos/`, { method: "POST", token, body: JSON.stringify(payload) });
+}
+
+export function updateCaso({ token, id, payload }: {
+  token: string;
+  id: number;
+  payload: Partial<{ titulo: string; descripcion: string; tipo: string; prioridad: string; estado: string }>
+}) {
+  return http<any>(`${API_PREFIX}/casos/${id}/`, { method: "PATCH", token, body: JSON.stringify(payload) });
+}
+
+// ========= API DE DETECCIÓN AI =========
+
+export async function uploadImageForDetection(token: string, file: File, tipo: 'face' | 'plate' = 'face') {
+  const formData = new FormData();
+  formData.append('image', file);
+  formData.append('detection_type', tipo);
+
+  const response = await fetch(`${API_PREFIX}/ai-detection/`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Token ${token}`,
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.detail || 'Error en la detección');
+  }
+
+  return response.json();
+}
+
+export async function getDetectionHistory(token: string) {
+  return http<any>(`${API_PREFIX}/ai-detection/history/`, { token });
+}
+
+// ========= EXPORTACIONES ADICIONALES =========
+
+export default api;
+
+// Tipos legacy para compatibilidad
 export type LoginResponse = { token: string; user: UserDTO };
 export type RegisterPayload = {
   nombre: string; apellido: string; correo: string; contrasena: string; sexo: "M" | "F"; telefono?: string;
@@ -55,310 +453,3 @@ export type RegisterResponse =
   | { ok: true; user?: UserDTO; id?: number; detail?: string }
   | { ok: false; detail?: string; fields?: Record<string, string | string[]> };
 
-/* ========= Comunicados ========= */
-export type Prioridad = "normal" | "importante" | "urgente";
-export type Destinatarios = "todos" | "copropietarios" | "inquilinos" | "personal" | "usuarios";
-
-export type ComunicadoDTO = {
-  id: number;
-  tipo: Prioridad;           // en BD usas 'tipo' como prioridad
-  fecha: string | null;      // YYYY-MM-DD
-  hora: string | null;       // HH:MM:SS
-  titulo: string;
-  contenido: string;
-  url: string | null;
-  estado: string;            // 'publicado' | 'borrador' | etc.
-  codigo_usuario: number | null; // autor
-};
-
-export type ComunicadoPayload = {
-  titulo: string;
-  contenido: string;
-  prioridad: Prioridad;
-  destinatarios: Destinatarios;
-  usuario_ids?: number[];
-  fecha_publicacion?: string; // YYYY-MM-DD (opcional)
-  hora_publicacion?: string;  // HH:MM:SS (opcional)
-};
-
-export type ComunicadoPublishResponse = {
-  comunicado: ComunicadoDTO;
-  envio: { total: number; enviados: number; errores: number };
-  mensaje: string;
-};
-
-/* ========= Áreas comunes / Horarios ========= */
-export type AreaComunDTO = {
-  id: number;
-  descripcion: string;
-  costo: number;           // decimal
-  capacidad_max: number;   // smallint
-  estado: string;          // 'activo' | 'inactivo' | 'mantenimiento' (texto)
-};
-
-export type AreaComunCreate = {
-  descripcion: string;
-  costo: number;
-  capacidad_max: number;
-  estado: "activo" | "inactivo" | "mantenimiento";
-};
-export type AreaComunUpdate = Partial<AreaComunCreate>;
-
-export type HorarioDTO = {
-  id: number;
-  hora_ini: string;  // "HH:MM:SS"
-  hora_fin: string;  // "HH:MM:SS"
-  id_area_c: number; // FK
-};
-export type HorarioCreate = { id_area_c: number; hora_ini: string; hora_fin: string };
-export type HorarioUpdate = Partial<HorarioCreate>;
-
-/* ========= Reservas ========= */
-export type ReservaDTO = {
-  id: number;
-  codigousuario: number;
-  idareac: number;
-  fecha: string;    // YYYY-MM-DD
-  horaini: string;  // HH:MM:SS
-  horafin: string;  // HH:MM:SS
-  estado: string | null;
-};
-
-export type ReservaCreate = {
-  idareac: number;
-  fecha: string;     // YYYY-MM-DD
-  hora_ini: string;  // HH:MM
-  hora_fin: string;  // HH:MM
-};
-
-export type ReservaReprogramar = {
-  fecha: string;     // YYYY-MM-DD
-  hora_ini: string;  // HH:MM
-  hora_fin: string;  // HH:MM
-};
-
-export type DisponibilidadResp = {
-  area: { id: number; descripcion: string; estado: string | null };
-  fecha: string;
-  horarios: { id: number; hora_ini: string; hora_fin: string }[];
-  ocupadas: { id: number; horaini: string; horafin: string; estado: string | null }[];
-  libres: { hora_ini: string; hora_fin: string }[];
-};
-
-/* ========= Helpers ========= */
-function buildQuery(params?: Record<string, any>) {
-  const q = new URLSearchParams();
-  if (!params) return "";
-  Object.entries(params).forEach(([k, v]) => {
-    if (v === undefined || v === null || v === "") return;
-    q.set(k, String(v));
-  });
-  const s = q.toString();
-  return s ? `?${s}` : "";
-}
-
-/* ========= API ========= */
-export const api = {
-  // --- Auth ---
-  login(email: string, password: string) {
-    return http<LoginResponse>(`${API_PREFIX}/auth/login/`, {
-      method: "POST",
-      body: JSON.stringify({ email, password }),
-    });
-  },
-
-  register(payload: RegisterPayload) {
-    return http<RegisterResponse>(`${API_PREFIX}/auth/register/`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-  },
-
-  logout(token: string) {
-    return http<{ detail?: string }>(`${API_PREFIX}/auth/logout/`, {
-      method: "POST",
-      token,
-    });
-  },
-
-  // --- Usuarios (listado general; resp paginado de DRF) ---
-  usuarios(
-    token: string,
-    params?: { search?: string; page?: number; page_size?: number; estado?: string; idrol?: number }
-  ) {
-    const q = buildQuery(params);
-    const url = `${API_PREFIX}/usuarios/${q}`;
-    return http<Paged<UserDTO> | UserDTO[]>(url, { token });
-  },
-
-  // --- Usuarios activos (atajo) ---
-  usuariosActivos(token: string, params?: { search?: string; page?: number; page_size?: number; idrol?: number }) {
-    const q = buildQuery({ estado: "activo", ...(params || {}) });
-    return http<Paged<UserDTO>>(`${API_PREFIX}/usuarios/${q}`, { token });
-  },
-
-  // --- Roles activos (para selects de rol/tipo) ---
-  listRolesActivos(token: string) {
-    const q = buildQuery({ estado: "activo", ordering: "id" });
-    return http<Paged<{ id: number; descripcion: string; tipo?: string; estado?: string }>>(
-      `${API_PREFIX}/roles/${q}`,
-      { token }
-    );
-  },
-
-  // --- Usuarios por un rol específico ---
-  usuariosPorRol(token: string, idrol: number, page_size = 300) {
-    const q = buildQuery({ estado: "activo", idrol, page_size });
-    return http<Paged<UserDTO>>(`${API_PREFIX}/usuarios/${q}`, { token });
-  },
-
-  // --- Usuarios por varios roles (combina en cliente) ---
-  async usuariosPorRoles(token: string, idroles: number[], page_size = 300) {
-    const chunks = await Promise.all(
-      idroles.map((id) => this.usuariosPorRol(token, id, page_size))
-    );
-    const map = new Map<number, UserDTO>();
-    chunks.forEach((res) => (res.results || []).forEach((u) => map.set(u.codigo, u)));
-    return Array.from(map.values());
-  },
-
-  // --- Comunicados: publicar ---
-  publicarComunicado(token: string, payload: ComunicadoPayload) {
-    return http<ComunicadoPublishResponse>(`${API_PREFIX}/comunicados/publicar/`, {
-      method: "POST",
-      token,
-      body: JSON.stringify(payload),
-    });
-  },
-
-  // --- Comunicados: listar (paginado DRF) ---
-  comunicados(
-    token: string,
-    params?: { estado?: string; ordering?: string; page?: number; page_size?: number; search?: string }
-  ) {
-    const q = buildQuery(params);
-    return http<Paged<ComunicadoDTO>>(`${API_PREFIX}/comunicados/${q}`, { token });
-  },
-
-  // --- Áreas comunes ---
-  areasList(
-    token: string,
-    params?: { search?: string; page?: number; page_size?: number; estado?: string; ordering?: string }
-  ) {
-    const q = buildQuery(params);
-    return http<Paged<AreaComunDTO>>(`${API_PREFIX}/areas-comunes/${q}`, { token });
-  },
-  areaCreate(token: string, payload: AreaComunCreate) {
-    return http<AreaComunDTO>(`${API_PREFIX}/areas-comunes/`, {
-      method: "POST",
-      token,
-      body: JSON.stringify(payload),
-    });
-  },
-  areaUpdate(token: string, id: number, payload: AreaComunUpdate) {
-    return http<AreaComunDTO>(`${API_PREFIX}/areas-comunes/${id}/`, {
-      method: "PUT",
-      token,
-      body: JSON.stringify(payload),
-    });
-  },
-  areaDelete(token: string, id: number) {
-    return http<void>(`${API_PREFIX}/areas-comunes/${id}/`, {
-      method: "DELETE",
-      token,
-    });
-  },
-
-  // --- Horarios ---
-  horariosList(token: string, idAreaC?: number, params?: { page?: number; page_size?: number; ordering?: string }) {
-    const q = buildQuery({ ...(params || {}), ...(idAreaC ? { id_area_c: idAreaC } : {}) });
-    return http<Paged<HorarioDTO>>(`${API_PREFIX}/horarios/${q}`, { token });
-  },
-  horarioCreate(token: string, payload: HorarioCreate) {
-    return http<HorarioDTO>(`${API_PREFIX}/horarios/`, {
-      method: "POST",
-      token,
-      body: JSON.stringify(payload),
-    });
-  },
-  horarioUpdate(token: string, id: number, payload: HorarioUpdate) {
-    return http<HorarioDTO>(`${API_PREFIX}/horarios/${id}/`, {
-      method: "PUT",
-      token,
-      body: JSON.stringify(payload),
-    });
-  },
-  horarioDelete(token: string, id: number) {
-    return http<void>(`${API_PREFIX}/horarios/${id}/`, {
-      method: "DELETE",
-      token,
-    });
-  },
-
-  // --- Reservas ---
-  disponibilidad(token: string, idareac: number, fecha: string) {
-    const q = buildQuery({ idareac, fecha });
-    return http<DisponibilidadResp>(`${API_PREFIX}/reservas/disponibilidad/${q}`, { token });
-  },
-  crearReserva(token: string, payload: ReservaCreate) {
-    return http<ReservaDTO>(`${API_PREFIX}/reservas/`, {
-      method: "POST",
-      token,
-      body: JSON.stringify(payload),
-    });
-  },
-  misReservas(token: string) {
-    return http<Paged<ReservaDTO> | ReservaDTO[]>(`${API_PREFIX}/reservas/mias/`, { token });
-  },
-  cancelarReserva(token: string, id: number) {
-    return http<{ detail: string }>(`${API_PREFIX}/reservas/${id}/cancelar/`, {
-      method: "POST",
-      token,
-      body: JSON.stringify({}),
-    });
-  },
-  reprogramarReserva(token: string, id: number, payload: ReservaReprogramar) {
-    return http<ReservaDTO>(`${API_PREFIX}/reservas/${id}/reprogramar/`, {
-      method: "POST",
-      token,
-      body: JSON.stringify(payload),
-    });
-  },
-};
-
-/* ========= Facade para páginas de Áreas (con namespace horarios) ========= */
-export const areasApi = {
-  list: (token: string, params?: { search?: string; page?: number; page_size?: number; estado?: string; ordering?: string }) =>
-    api.areasList(token, params),
-  create: (token: string, payload: AreaComunCreate) =>
-    api.areaCreate(token, payload),
-  update: (token: string, id: number, payload: AreaComunUpdate) =>
-    api.areaUpdate(token, id, payload),
-  remove: (token: string, id: number) =>
-    api.areaDelete(token, id),
-
-  horarios: {
-    list: (token: string, idAreaC?: number, params?: { page?: number; page_size?: number; ordering?: string }) =>
-      api.horariosList(token, idAreaC, params),
-    create: (token: string, payload: HorarioCreate) =>
-      api.horarioCreate(token, payload),
-    update: (token: string, id: number, payload: HorarioUpdate) =>
-      api.horarioUpdate(token, id, payload),
-    remove: (token: string, id: number) =>
-      api.horarioDelete(token, id),
-  },
-};
-
-/* ========= Facade para páginas de Reservas ========= */
-export const reservasApi = {
-  disponibilidad: (token: string, idareac: number, fecha: string) =>
-    api.disponibilidad(token, idareac, fecha),
-  crear: (token: string, payload: ReservaCreate) =>
-    api.crearReserva(token, payload),
-  mis: (token: string) =>
-    api.misReservas(token),
-  cancelar: (token: string, id: number) =>
-    api.cancelarReserva(token, id),
-  reprogramar: (token: string, id: number, payload: ReservaReprogramar) =>
-    api.reprogramarReserva(token, id, payload),
-};
