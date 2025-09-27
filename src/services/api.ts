@@ -1,5 +1,4 @@
 // src/services/api.ts
-// Configuración central de la API
 export const API_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000";
 export const API_PREFIX = `${API_BASE}/api`;
 
@@ -124,6 +123,13 @@ export type UserDTO = {
   estado: any;
   idrol: number | null;
   rol?: { id: number; descripcion: string; tipo?: string; estado?: any } | null;
+};
+
+export type Paged<T> = {
+  count: number;
+  next: string | null;
+  previous: string | null;
+  results: T[];
 };
 
 /* ========= Auth ========= */

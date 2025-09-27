@@ -12,19 +12,29 @@ export default function Casos() {
   const key = q.get("pkg") ?? "";
   const pkg = PAQUETES.find((p) => p.key === key) ?? PAQUETES[0];
 
+  // Flash message al volver desde /comunicados/publicar
+  const location = useLocation() as any;
+  const flash: string | undefined = location.state?.flash;
+
   return (
     <div className="min-h-dvh bg-gradient-to-br from-cyan-50 via-blue-50 to-cyan-100 text-slate-800">
       <Navbar />
       <main className="mx-auto max-w-4xl px-4 py-8">
         <div className={`h-28 rounded-3xl bg-gradient-to-r ${pkg.color} mb-6 relative`}>
-          <div className="absolute -bottom-3 left-4 h-16 w-16 grid place-items-center rounded-2xl bg-white/95 shadow">
-          </div>
+          <div className="absolute -bottom-3 left-4 h-16 w-16 grid place-items-center rounded-2xl bg-white/95 shadow" />
         </div>
 
         <h1 className="text-2xl font-semibold mb-1">{pkg.title}</h1>
         <p className="text-slate-500 mb-6">
           {pkg.casos.length} {pkg.casos.length === 1 ? "caso de uso" : "casos de uso"}
         </p>
+
+        {/* Banner de éxito si venimos de publicar un comunicado */}
+        {flash && (
+          <div className="mb-4 rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-green-800">
+            {flash}
+          </div>
+        )}
 
         <div className="grid gap-3 sm:grid-cols-2">
           {pkg.casos.map((c) =>
