@@ -168,6 +168,25 @@ export type MultaForm = {
   estado?: string;
 };
 
+// ========= TIPOS DE ÁREAS COMUNES =========
+
+export type AreaComunDTO = {
+  id: number;
+  descripcion: string;
+  costo: number;
+  capacidad_max: number;
+  estado: "activo" | "inactivo" | "mantenimiento";
+  fecha_creacion?: string;
+  fecha_modificacion?: string;
+};
+
+export type AreaComunForm = {
+  descripcion: string;
+  costo: number;
+  capacidad_max: number;
+  estado: "activo" | "inactivo" | "mantenimiento";
+};
+
 // ========= FUNCIONES DE UTILIDAD =========
 
 function buildQuery(params: Record<string, any>) {
@@ -364,6 +383,39 @@ export const multasAPI = {
 
   async delete(token: string, id: number): Promise<void> {
     return http<void>(`${API_PREFIX}/multas/${id}/`, { method: "DELETE", token });
+  }
+};
+
+// ========= API DE ÁREAS COMUNES =========
+
+export const areasApi = {
+  async list(token: string): Promise<AreaComunDTO[]> {
+    const data = await http<any>(`${API_PREFIX}/areas-comunes/`, { token });
+    return Array.isArray(data) ? data : data.results || [];
+  },
+
+  async get(token: string, id: number): Promise<AreaComunDTO> {
+    return http<AreaComunDTO>(`${API_PREFIX}/areas-comunes/${id}/`, { token });
+  },
+
+  async create(token: string, payload: AreaComunForm): Promise<AreaComunDTO> {
+    return http<AreaComunDTO>(`${API_PREFIX}/areas-comunes/`, {
+      method: "POST",
+      token,
+      body: JSON.stringify(payload)
+    });
+  },
+
+  async update(token: string, id: number, payload: Partial<AreaComunForm>): Promise<AreaComunDTO> {
+    return http<AreaComunDTO>(`${API_PREFIX}/areas-comunes/${id}/`, {
+      method: "PATCH",
+      token,
+      body: JSON.stringify(payload)
+    });
+  },
+
+  async delete(token: string, id: number): Promise<void> {
+    return http<void>(`${API_PREFIX}/areas-comunes/${id}/`, { method: "DELETE", token });
   }
 };
 

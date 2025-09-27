@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { login, me } from './api'
+import { api } from './api'
 
 /* ——— Iconos SVG inline ——— */
 const CondoLogo = () => (
@@ -44,13 +44,14 @@ export default function Login() {
     setMsg('')
     setLoading(true)
     try {
-      const data = await login(email, password)
-      const access = data.access as string
-      localStorage.setItem('token', access)
-      const u = await me(access)
-      setMsg(`Bienvenido: ${u.first_name || ''} ${u.last_name || ''} (${u.email})`)
-    } catch (err: any) {
-      setMsg(err?.message ?? 'Error al iniciar sesión')
+      const data = await api.login(email, password)
+      const token = data.token as string
+      localStorage.setItem('token', token)
+      const user = data.user
+      setMsg(`Bienvenido: ${user.nombre || ''} ${user.apellido || ''} (${user.correo})`)
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Error al iniciar sesión'
+      setMsg(errorMessage)
     } finally {
       setLoading(false)
     }

@@ -6,18 +6,18 @@ export type Pago = {
   tipo: string;
   descripcion: string;
   monto: number;
-  estado?: string; // opcional
-};
-
-export type Multa = {
-  id: number;
-  descripcion: string;
-  monto: number;
-  estado?: string; // opcional
+  estado?: string;
 };
 
 export type PagoForm = {
   tipo: string;
+  descripcion: string;
+  monto: number;
+  estado?: string;
+};
+
+export type Multa = {
+  id: number;
   descripcion: string;
   monto: number;
   estado?: string;
@@ -29,50 +29,52 @@ export type MultaForm = {
   estado?: string;
 };
 
+// ========= API DE PAGOS =========
+
 export const pagosAPI = {
-  list(token: string, search?: string) {
-    const q = search ? `?search=${encodeURIComponent(search)}` : "";
-    return http<{ results?: Pago[] } | Pago[]>(`${API_PREFIX}/pagos/${q}`, { token });
+  async list(token: string): Promise<Pago[]> {
+    const data = await http<any>(`${API_PREFIX}/pagos/`, { token });
+    return Array.isArray(data) ? data : data.results || [];
   },
-  create(token: string, data: PagoForm) {
-    return http<Pago>(`${API_PREFIX}/pagos/`, {
-      method: "POST",
-      token,
-      body: JSON.stringify(data),
-    });
+
+  async get(token: string, id: number): Promise<Pago> {
+    return http<Pago>(`${API_PREFIX}/pagos/${id}/`, { token });
   },
-  update(token: string, id: number, data: Partial<PagoForm>) {
-    return http<Pago>(`${API_PREFIX}/pagos/${id}/`, {
-      method: "PATCH",
-      token,
-      body: JSON.stringify(data),
-    });
+
+  async create(token: string, payload: PagoForm): Promise<Pago> {
+    return http<Pago>(`${API_PREFIX}/pagos/`, { method: "POST", token, body: JSON.stringify(payload) });
   },
-  remove(token: string, id: number) {
+
+  async update(token: string, id: number, payload: Partial<PagoForm>): Promise<Pago> {
+    return http<Pago>(`${API_PREFIX}/pagos/${id}/`, { method: "PATCH", token, body: JSON.stringify(payload) });
+  },
+
+  async delete(token: string, id: number): Promise<void> {
     return http<void>(`${API_PREFIX}/pagos/${id}/`, { method: "DELETE", token });
-  },
+  }
 };
 
+// ========= API DE MULTAS =========
+
 export const multasAPI = {
-  list(token: string, search?: string) {
-    const q = search ? `?search=${encodeURIComponent(search)}` : "";
-    return http<{ results?: Multa[] } | Multa[]>(`${API_PREFIX}/multas/${q}`, { token });
+  async list(token: string): Promise<Multa[]> {
+    const data = await http<any>(`${API_PREFIX}/multas/`, { token });
+    return Array.isArray(data) ? data : data.results || [];
   },
-  create(token: string, data: MultaForm) {
-    return http<Multa>(`${API_PREFIX}/multas/`, {
-      method: "POST",
-      token,
-      body: JSON.stringify(data),
-    });
+
+  async get(token: string, id: number): Promise<Multa> {
+    return http<Multa>(`${API_PREFIX}/multas/${id}/`, { token });
   },
-  update(token: string, id: number, data: Partial<MultaForm>) {
-    return http<Multa>(`${API_PREFIX}/multas/${id}/`, {
-      method: "PATCH",
-      token,
-      body: JSON.stringify(data),
-    });
+
+  async create(token: string, payload: MultaForm): Promise<Multa> {
+    return http<Multa>(`${API_PREFIX}/multas/`, { method: "POST", token, body: JSON.stringify(payload) });
   },
-  remove(token: string, id: number) {
+
+  async update(token: string, id: number, payload: Partial<MultaForm>): Promise<Multa> {
+    return http<Multa>(`${API_PREFIX}/multas/${id}/`, { method: "PATCH", token, body: JSON.stringify(payload) });
+  },
+
+  async delete(token: string, id: number): Promise<void> {
     return http<void>(`${API_PREFIX}/multas/${id}/`, { method: "DELETE", token });
-  },
+  }
 };
