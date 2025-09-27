@@ -19,8 +19,9 @@ export default function Login() {
       await login(email.trim(), password);
       setMsg("¡Bienvenido! Redirigiendo…");
       navigate("/dashboard", { replace: true });
-    } catch (err: any) {
-      setMsg(err?.message || "Error al iniciar sesión");
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Error al iniciar sesión";
+      setMsg(errorMessage);
     } finally {
       setLoading(false);
     }

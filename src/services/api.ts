@@ -1,32 +1,117 @@
 // src/services/api.ts
-const RAW_BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8000";
-// ❗ quita barras del final: "http://127.0.0.1:8000/"
-export const API_BASE = RAW_BASE.replace(/\/+$/, "");
-// Prefijo común para todos los endpoints DRF
+// Configuración central de la API
+export const API_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000";
 export const API_PREFIX = `${API_BASE}/api`;
 
-const AUTH_SCHEME = "Token"; // DRF TokenAuthentication
-type HttpOpts = RequestInit & { token?: string };
-
-export async function http<T>(url: string, opts: HttpOpts = {}): Promise<T> {
-  const headers: Record<string, string> = { ...(opts.headers as any) };
-  if (opts.token) headers.Authorization = `${AUTH_SCHEME} ${opts.token}`;
-  if (opts.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
-
-  const res = await fetch(url, { ...opts, headers });
-  const ct = res.headers.get("content-type") || "";
-  const data = ct.includes("application/json") ? await res.json() : await res.text();
-
-  if (!res.ok) {
-    const msg =
-      typeof data === "string"
-        ? data
-        : data?.detail ||
-          (data && typeof data === "object" ? JSON.stringify(data) : "Error");
-    throw new Error(msg);
-  }
-  return data as T;
+// Tipos para las respuestas de la API
+export interface ApiError {
+  detail?: string;
+  message?: string;
+  errors?: Record<string, string[]>;
 }
+
+// Función HTTP central con mejor manejo de errores
+export async function http<T>(
+  url: string,
+  options: {
+    method?: string;
+    token?: string;
+    body?: string;
+    headers?: Record<string, string>;
+  } = {}
+): Promise<T> {
+  const { method = "GET", token, body, headers = {} } = options;
+
+  const config: RequestInit = {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      ...headers,
+    },
+  };
+
+  if (token) {
+    config.headers = {
+      ...config.headers,
+      Authorization: `Token ${token}`,
+    };
+  }
+
+  if (body && method !== "GET") {
+    config.body = body;
+  }
+
+  try {
+    const response = await fetch(url, config);
+
+    if (!response.ok) {
+      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+
+      try {
+        const errorData = await response.json();
+        if (errorData.detail) {
+          errorMessage = errorData.detail;
+        } else if (errorData.message) {
+          errorMessage = errorData.message;
+        } else if (errorData.errors) {
+          // Manejo de errores de validación del backend Django
+          const firstError = Object.values(errorData.errors)[0];
+          if (Array.isArray(firstError) && firstError.length > 0) {
+            errorMessage = firstError[0];
+          }
+        }
+      } catch {
+        // Si no se puede parsear el JSON de error, usar el mensaje por defecto
+      }
+
+      throw new Error(errorMessage);
+    }
+
+    // Manejar respuestas vacías (204 No Content)
+    if (response.status === 204) {
+      return {} as T;
+    }
+
+    return await response.json();
+  } catch (error) {
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error("Error de conexión con el servidor");
+  }
+}
+
+// API para autenticación
+export const api = {
+  async login(email: string, password: string): Promise<{ token: string; user: any }> {
+    const response = await http<{ token: string; user: any }>(`${API_BASE}/api-token-auth/`, {
+      method: "POST",
+      body: JSON.stringify({ username: email, password }),
+    });
+    return response;
+  },
+
+  async register(userData: {
+    nombre: string;
+    apellido: string;
+    correo: string;
+    contrasena: string;
+    sexo: "M" | "F";
+    telefono?: string;
+  }): Promise<{ message: string }> {
+    const response = await http<{ message: string }>(`${API_PREFIX}/register/`, {
+      method: "POST",
+      body: JSON.stringify(userData),
+    });
+    return response;
+  },
+
+  async getProfile(token: string): Promise<any> {
+    return http<any>(`${API_PREFIX}/profile/`, { token });
+  },
+};
+
+export default api;
 
 /* ========= Tipos comunes ========= */
 export type UserDTO = {
@@ -49,33 +134,3 @@ export type RegisterPayload = {
 export type RegisterResponse =
   | { ok: true; user?: UserDTO; id?: number; detail?: string }
   | { ok: false; detail?: string; fields?: Record<string, string | string[]> };
-
-export const api = {
-  login(email: string, password: string) {
-    return http<LoginResponse>(`${API_PREFIX}/auth/login/`, {
-      method: "POST",
-      body: JSON.stringify({ email, password }),
-    });
-  },
-  register(payload: RegisterPayload) {
-    return http<RegisterResponse>(`${API_PREFIX}/auth/register/`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
-  },
-  logout(token: string) {
-    return http<{ detail?: string }>(`${API_PREFIX}/auth/logout/`, {
-      method: "POST",
-      token,
-    });
-  },
-
-  // ejemplo
-  usuarios(token: string, params?: { search?: string; page?: number }) {
-    const q = new URLSearchParams();
-    if (params?.search) q.set("search", params.search);
-    if (params?.page) q.set("page", String(params.page));
-    const url = `${API_PREFIX}/usuarios/${q.toString() ? `?${q}` : ""}`;
-    return http<{ results: UserDTO[]; count: number } | UserDTO[]>(url, { token });
-  },
-};

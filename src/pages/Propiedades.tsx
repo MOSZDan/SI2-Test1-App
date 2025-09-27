@@ -142,7 +142,8 @@ export default function Propiedades() {
       const residentes = allUsers.filter((user: Usuario) => user.idrol === 1 || user.idrol === 2);
       setUsuarios(residentes);
     } catch (err) {
-      console.error("Error cargando usuarios:", err);
+      const errorMessage = err instanceof Error ? err.message : "Error desconocido";
+      console.error("Error cargando usuarios:", errorMessage);
     }
   };
 

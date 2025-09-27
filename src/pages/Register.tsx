@@ -61,18 +61,21 @@ export default function Register() {
       setMsg("Registro exitoso. Ahora puedes iniciar sesión.");
       // pequeña pausa opcional para que se vea el mensaje; comenta si no te gusta
       setTimeout(() => navigate("/login", { replace: true }), 800);
-    } catch (e: any) {
-      let text = e?.message || "No se pudo registrar";
-      try {
-        const maybeJson = JSON.parse(e.message);
-        if (maybeJson?.fields?.correo) {
-          const c = maybeJson.fields.correo;
-          text = Array.isArray(c) ? c.join(", ") : String(c);
-        } else if (typeof maybeJson?.detail === "string" && /correo|email/i.test(maybeJson.detail)) {
-          text = maybeJson.detail;
+    } catch (e) {
+      let text = "No se pudo registrar";
+      if (e instanceof Error) {
+        text = e.message;
+        try {
+          const maybeJson = JSON.parse(e.message);
+          if (maybeJson?.fields?.correo) {
+            const c = maybeJson.fields.correo;
+            text = Array.isArray(c) ? c.join(", ") : String(c);
+          } else if (typeof maybeJson?.detail === "string" && /correo|email/i.test(maybeJson.detail)) {
+            text = maybeJson.detail;
+          }
+        } catch {
+          // e.message no era JSON; si menciona correo, lo dejamos
         }
-      } catch {
-        // e.message no era JSON; si menciona correo, lo dejamos
       }
       if (/existe|registrad|duplicate|uniq/i.test(text)) text = "El correo ya está registrado";
       setMsg(text);

@@ -147,8 +147,9 @@ export default function CuotasMultas() {
       }
       setShowPagoModal(false);
       await loadData();
-    } catch (err: any) {
-      setPagoError(err?.detail || err?.message || "No se pudo guardar el pago.");
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : (err as any)?.detail || "No se pudo guardar el pago.";
+      setPagoError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -174,8 +175,9 @@ export default function CuotasMultas() {
       }
       setShowMultaModal(false);
       await loadData();
-    } catch (err: any) {
-      setMultaError(err?.detail || err?.message || "No se pudo guardar la multa.");
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : (err as any)?.detail || "No se pudo guardar la multa.";
+      setMultaError(errorMessage);
     } finally {
       setLoading(false);
     }
