@@ -1,432 +1,393 @@
 // src/pages/Reservas.tsx
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { useAuth } from "../context/AuthContext";
+import Navbar from "../components/Navbar";
 import {
   areasApi,
   reservasApi,
   AreaComunDTO,
-  DisponibilidadResp,
   ReservaDTO,
+  DisponibilidadDTO,
+  ReservaForm,
 } from "../services/api";
 
-// Utilidad sencilla para leer el token (ajústalo si ya tienes un AuthContext)
-function useToken() {
-  const [token, setToken] = useState<string | null>(null);
-  useEffect(() => {
-    setToken(localStorage.getItem("token"));
-  }, []);
-  return token;
-}
-
-/** "HH:MM:SS" | "HH:MM" | null/undefined -> "HH:MM" (seguro) */
-function hhmmSafe(ss?: string | null) {
-  if (!ss || typeof ss !== "string") return "--:--";
-  const parts = ss.split(":");
-  if (parts.length < 2) return "--:--";
-  const [h, m] = parts;
-  return `${h?.padStart(2, "0") ?? "--"}:${m?.padStart(2, "0") ?? "--"}`;
-}
-
-function fmtHoraRango(ini?: string | null, fin?: string | null) {
-  return `${hhmmSafe(ini)} - ${hhmmSafe(fin)}`;
-}
-
-function Button(props: React.ButtonHTMLAttributes<HTMLButtonElement>) {
-  const { className = "", ...rest } = props;
-  return (
-    <button
-      {...rest}
-      className={
-        "px-3 py-2 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-60 " +
-        className
-      }
-    />
-  );
-}
-
-function SecondaryButton(props: React.ButtonHTMLAttributes<HTMLButtonElement>) {
-  const { className = "", ...rest } = props;
-  return (
-    <button
-      {...rest}
-      className={
-        "px-3 py-2 rounded-lg text-sm font-medium bg-gray-100 hover:bg-gray-200 text-gray-900 disabled:opacity-60 " +
-        className
-      }
-    />
-  );
-}
-
 export default function ReservasPage() {
-  const token = useToken();
+  const { token, user } = useAuth();
 
-  // Filtros izquierda
+  // Estados principales
   const [areas, setAreas] = useState<AreaComunDTO[]>([]);
-  const [areaId, setAreaId] = useState<number | "">("");
-  const [fecha, setFecha] = useState<string>(() => {
-    const d = new Date();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    return `${d.getFullYear()}-${mm}-${dd}`;
+  const [selectedArea, setSelectedArea] = useState<AreaComunDTO | null>(null);
+  const [selectedDate, setSelectedDate] = useState<string>(() => {
+    const today = new Date();
+    return today.toISOString().split('T')[0];
   });
-
-  // Datos de disponibilidad
-  const [disp, setDisp] = useState<DisponibilidadResp | null>(null);
-  const [loadingDisp, setLoadingDisp] = useState(false);
-
-  // Mis reservas
+  const [disponibilidad, setDisponibilidad] = useState<DisponibilidadDTO | null>(null);
   const [misReservas, setMisReservas] = useState<ReservaDTO[]>([]);
-  const [loadingMis, setLoadingMis] = useState(false);
 
-  // UI estado
-  const [creating, setCreating] = useState(false);
-  const [cancelingId, setCancelingId] = useState<number | null>(null);
-  const [editingId, setEditingId] = useState<number | null>(null);
-  const [editFecha, setEditFecha] = useState<string>("");
-  const [editIni, setEditIni] = useState<string>("");
-  const [editFin, setEditFin] = useState<string>("");
+  // Estados de carga
+  const [loading, setLoading] = useState(false);
+  const [loadingDisponibilidad, setLoadingDisponibilidad] = useState(false);
+  const [creandoReserva, setCreandoReserva] = useState(false);
+  const [error, setError] = useState<string>("");
 
-  // Cargar áreas al montar
+  // Cargar áreas comunes al montar (paso 1 del caso de uso)
   useEffect(() => {
     if (!token) return;
-    (async () => {
-      try {
-        const res = await areasApi.list(token, {
-          estado: "activo",
-          page_size: 500,
-          ordering: "descripcion",
-        });
-        setAreas((res as any).results ?? (res as any)); // por si el backend no pagina
-      } catch (e) {
-        console.error(e);
-      }
-    })();
+    cargarAreas();
   }, [token]);
-
-  // Buscar disponibilidad
-  async function fetchDisponibilidad() {
-    if (!token || !areaId || !fecha) return;
-    setLoadingDisp(true);
-    try {
-      const r = await reservasApi.disponibilidad(token, Number(areaId), fecha);
-      setDisp(r);
-    } catch (e) {
-      alert((e as Error).message);
-    } finally {
-      setLoadingDisp(false);
-    }
-  }
 
   // Cargar mis reservas
-  async function fetchMisReservas() {
-    if (!token) return;
-    setLoadingMis(true);
-    try {
-      const r = await reservasApi.mis(token);
-      const data = (Array.isArray(r) ? r : r.results) ?? [];
-      // ordenar descendente por fecha + hora
-      data.sort((a, b) =>
-        a.fecha < b.fecha
-          ? 1
-          : a.fecha > b.fecha
-          ? -1
-          : (a.horaini || "") < (b.horaini || "")
-          ? 1
-          : -1
-      );
-      setMisReservas(data);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoadingMis(false);
-    }
-  }
-
   useEffect(() => {
-    fetchMisReservas();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (!token) return;
+    cargarMisReservas();
   }, [token]);
 
-  const libres = disp?.libres ?? [];
-  const ocupadas = disp?.ocupadas ?? [];
-
-  // Crear reserva haciendo click en una franja libre
-  async function reservarSlot(hora_ini_ss: string, hora_fin_ss: string) {
-    if (!token || !areaId || !fecha) return;
-    const txt = `¿Confirmar reserva?\nÁrea: ${
-      areas.find((a) => a.id === areaId)?.descripcion
-    }\nFecha: ${fecha}\nHorario: ${fmtHoraRango(hora_ini_ss, hora_fin_ss)}`;
-    if (!confirm(txt)) return;
-
-    setCreating(true);
+  const cargarAreas = async () => {
     try {
-      await reservasApi.crear(token, {
-        idareac: Number(areaId),
-        fecha,
-        hora_ini: hhmmSafe(hora_ini_ss),
-        hora_fin: hhmmSafe(hora_fin_ss),
-      });
-      await fetchDisponibilidad();
-      await fetchMisReservas();
-    } catch (e) {
-      alert((e as Error).message);
+      setLoading(true);
+      const areasData = await areasApi.list(token!);
+      // Filtrar solo áreas activas como indica el caso de uso
+      const areasActivas = areasData.filter(area => area.estado === 'activo');
+      setAreas(areasActivas);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Error cargando áreas";
+      setError(errorMessage);
     } finally {
-      setCreating(false);
+      setLoading(false);
     }
-  }
+  };
 
-  // Cancelar
-  async function cancelar(id: number) {
-    if (!token) return;
-    if (!confirm("¿Cancelar esta reserva?")) return;
-    setCancelingId(id);
+  const cargarMisReservas = async () => {
     try {
-      await reservasApi.cancelar(token, id);
-      await fetchDisponibilidad();
-      await fetchMisReservas();
-    } catch (e) {
-      alert((e as Error).message);
+      const reservasData = await reservasApi.list(token!);
+      // Filtrar solo las reservas del usuario actual
+      const misReservasData = reservasData.filter(r => r.codigo_usuario === user?.codigo);
+      setMisReservas(misReservasData);
+    } catch (error) {
+      console.error("Error cargando mis reservas:", error);
+    }
+  };
+
+  // Paso 2 y 4 del caso de uso: Mostrar calendario y horarios disponibles
+  const consultarDisponibilidad = async () => {
+    if (!selectedArea || !selectedDate) {
+      setError("Selecciona un área y una fecha");
+      return;
+    }
+
+    try {
+      setLoadingDisponibilidad(true);
+      setError("");
+      const dispData = await reservasApi.obtenerDisponibilidad(token!, selectedArea.id, selectedDate);
+      setDisponibilidad(dispData);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Error consultando disponibilidad";
+      setError(errorMessage);
+      setDisponibilidad(null);
     } finally {
-      setCancelingId(null);
+      setLoadingDisponibilidad(false);
     }
-  }
+  };
 
-  // Iniciar reprogramación (prefill con valores actuales)
-  function startEdit(r: ReservaDTO) {
-    setEditingId(r.id);
-    setEditFecha(r.fecha);
-    setEditIni(hhmmSafe(r.horaini));
-    setEditFin(hhmmSafe(r.horafin));
-  }
+  // Ejecutar consulta cuando cambia área o fecha
+  useEffect(() => {
+    if (selectedArea && selectedDate) {
+      consultarDisponibilidad();
+    }
+  }, [selectedArea, selectedDate]);
 
-  // Guardar reprogramación
-  async function saveEdit(id: number) {
-    if (!token) return;
+  // Pasos 5, 6, 7, 8, 9, 10 del caso de uso: Confirmar reserva
+  const confirmarReserva = async (horaIni: string, horaFin: string) => {
+    if (!selectedArea || !selectedDate || !user) {
+      setError("Datos incompletos para realizar la reserva");
+      return;
+    }
+
+    const confirmacion = confirm(
+      `¿Confirmar reserva?\n` +
+      `Área: ${selectedArea.descripcion}\n` +
+      `Fecha: ${selectedDate}\n` +
+      `Horario: ${horaIni} - ${horaFin}\n` +
+      `Costo: $${selectedArea.costo}`
+    );
+
+    if (!confirmacion) return;
+
     try {
-      await reservasApi.reprogramar(token, id, {
-        fecha: editFecha,
-        hora_ini: editIni,
-        hora_fin: editFin,
-      });
-      setEditingId(null);
-      await fetchDisponibilidad();
-      await fetchMisReservas();
-    } catch (e) {
-      alert((e as Error).message);
-    }
-  }
+      setCreandoReserva(true);
+      setError("");
 
-  const areaOptions = useMemo(
-    () =>
-      areas.map((a) => (
-        <option key={a.id} value={a.id}>
-          {a.descripcion}
-        </option>
-      )),
-    [areas]
-  );
+      const reservaPayload: ReservaForm = {
+        codigo_usuario: user.codigo,
+        id_area_c: selectedArea.id,
+        fecha: selectedDate,
+        hora_ini: horaIni,
+        hora_fin: horaFin
+      };
+
+      // Paso 7: Validar disponibilidad en tiempo real
+      const validacion = await reservasApi.validarDisponibilidad(token!, reservaPayload);
+
+      if (!validacion.disponible) {
+        setError(validacion.mensaje || "El horario ya no está disponible");
+        return;
+      }
+
+      // Paso 8: Registrar la reserva
+      const nuevaReserva = await reservasApi.create(token!, reservaPayload);
+
+      // Paso 9: Comprobante digital (simulado con mensaje)
+      alert(
+        `¡Reserva confirmada!\n` +
+        `Comprobante #${nuevaReserva.id}\n` +
+        `Área: ${selectedArea.descripcion}\n` +
+        `Fecha: ${selectedDate}\n` +
+        `Horario: ${horaIni} - ${horaFin}\n` +
+        `Estado: Confirmada`
+      );
+
+      // Paso 10: Actualizar vistas (simula notificación)
+      await Promise.all([
+        consultarDisponibilidad(), // Refrescar disponibilidad
+        cargarMisReservas() // Refrescar mis reservas
+      ]);
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Error al confirmar reserva";
+      setError(errorMessage);
+    } finally {
+      setCreandoReserva(false);
+    }
+  };
+
+  // Paso 11 y 12 del caso de uso: Cancelar reserva
+  const cancelarReserva = async (reserva: ReservaDTO) => {
+    const confirmacion = confirm(
+      `¿Cancelar reserva #${reserva.id}?\n` +
+      `Área: ${reserva.area?.descripcion}\n` +
+      `Fecha: ${reserva.fecha}\n` +
+      `Esta acción es permanente.`
+    );
+
+    if (!confirmacion) return;
+
+    try {
+      // Paso 12: Actualizar estado a Cancelada y liberar horario
+      await reservasApi.cancelar(token!, reserva.id);
+
+      alert("Reserva cancelada exitosamente");
+
+      // Refrescar datos
+      await Promise.all([
+        consultarDisponibilidad(),
+        cargarMisReservas()
+      ]);
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Error al cancelar reserva";
+      setError(errorMessage);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-cyan-50">
+        <Navbar />
+        <div className="container mx-auto px-4 py-8">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Cargando áreas comunes...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="p-4 md:p-6">
-      <h1 className="text-2xl font-semibold mb-4">Reservas</h1>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-cyan-50">
+      <Navbar />
+      <div className="container mx-auto px-4 py-8">
+        <h1 className="text-3xl font-bold text-gray-800 mb-8">Gestión de Reservas - Áreas Comunes</h1>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Izquierda: Disponibilidad */}
-        <div className="rounded-2xl border border-gray-200 p-4">
-          <h2 className="text-lg font-medium mb-4">Disponibilidad</h2>
-
-          <div className="flex flex-col md:flex-row gap-3 mb-4">
-            <select
-              className="border rounded-lg px-3 py-2 w-full md:w-1/2"
-              value={areaId}
-              onChange={(e) =>
-                setAreaId(e.target.value ? Number(e.target.value) : "")
-              }
-            >
-              <option value="">Selecciona un área</option>
-              {areaOptions}
-            </select>
-
-            <input
-              type="date"
-              className="border rounded-lg px-3 py-2 w-full md:w-1/2"
-              value={fecha}
-              onChange={(e) => setFecha(e.target.value)}
-            />
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-red-700">{error}</p>
           </div>
+        )}
 
-          <div className="flex gap-3 mb-4">
-            <Button
-              onClick={fetchDisponibilidad}
-              disabled={!areaId || !fecha || loadingDisp}
-            >
-              {loadingDisp ? "Buscando..." : "Buscar"}
-            </Button>
-            <SecondaryButton onClick={() => setDisp(null)} disabled={loadingDisp}>
-              Limpiar
-            </SecondaryButton>
-          </div>
-
-          {/* Resultado */}
-          {disp ? (
-            <div className="space-y-6">
-              <div>
-                <div className="text-sm text-gray-600">
-                  Área: <b>{disp.area.descripcion}</b> · Fecha: <b>{disp.fecha}</b>
-                </div>
-              </div>
-
-              <section>
-                <h3 className="font-medium mb-2">Franjas libres</h3>
-                {libres.length === 0 ? (
-                  <div className="text-sm text-gray-500">
-                    No hay disponibilidad para ese día.
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {libres.map((f, i) => (
-                      <button
-                        key={i}
-                        onClick={() => reservarSlot(f.hora_ini, f.hora_fin)}
-                        disabled={creating}
-                        className="px-3 py-1 rounded-full border border-emerald-300 text-emerald-700 hover:bg-emerald-50 text-sm"
-                        title="Reservar esta franja"
-                      >
-                        {fmtHoraRango(f.hora_ini, f.hora_fin)}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </section>
-
-              <section>
-                <h3 className="font-medium mb-2">Reservas ocupadas</h3>
-                {ocupadas.length === 0 ? (
-                  <div className="text-sm text-gray-500">No hay reservas ese día.</div>
-                ) : (
-                  <ul className="space-y-2">
-                    {ocupadas.map((r) => (
-                      <li
-                        key={r.id}
-                        className="text-sm px-3 py-2 rounded-lg bg-gray-50 border border-gray-200 flex items-center justify-between"
-                      >
-                        <span>{fmtHoraRango(r.horaini, r.horafin)}</span>
-                        <span className="text-gray-500">
-                          {r.estado || "confirmada"}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </section>
-            </div>
-          ) : (
-            <div className="text-sm text-gray-500">
-              Selecciona un área y una fecha para ver disponibilidad.
-            </div>
-          )}
-        </div>
-
-        {/* Derecha: Mis reservas */}
-        <div className="rounded-2xl border border-gray-200 p-4">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-medium">Mis reservas</h2>
-            <SecondaryButton onClick={fetchMisReservas} disabled={loadingMis}>
-              {loadingMis ? "Actualizando..." : "Actualizar"}
-            </SecondaryButton>
-          </div>
-
-          {misReservas.length === 0 ? (
-            <div className="text-sm text-gray-500">Aún no tienes reservas.</div>
-          ) : (
-            <ul className="space-y-3">
-              {misReservas.map((r) => {
-                const enEdicion = editingId === r.id;
-                const estadoNorm = (r?.estado || "").toLowerCase();
-                const esCancelada = estadoNorm === "cancelada";
-                const esFinalizada =
-                  estadoNorm === "finalizada" || estadoNorm === "finalizado";
-                const botonesVisibles = !enEdicion && !esCancelada && !esFinalizada;
-                const canceling = cancelingId === r.id;
-
-                return (
-                  <li key={r.id} className="border rounded-xl p-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="font-medium">
-                          #{r.id} · {r.fecha} · {fmtHoraRango(r?.horaini, r?.horafin)}
-                        </div>
-                        <div className="text-sm text-gray-600">
-                          Estado: {r?.estado || "confirmada"}
-                        </div>
-                      </div>
-
-                      {botonesVisibles ? (
-                        <div className="flex gap-2">
-                          <SecondaryButton
-                            onClick={() => startEdit(r)}
-                            title="Reprogramar"
-                          >
-                            Reprogramar
-                          </SecondaryButton>
-                          <Button
-                            disabled={canceling}
-                            onClick={() => cancelar(r.id)}
-                            className="bg-red-600 hover:bg-red-700"
-                          >
-                            {canceling ? "Cancelando..." : "Cancelar"}
-                          </Button>
-                        </div>
-                      ) : null}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* LADO IZQUIERDO: Disponibilidad y Reservar */}
+          <div className="space-y-6">
+            {/* Paso 3: Seleccionar área común */}
+            <div className="bg-white rounded-lg shadow-md p-6">
+              <h2 className="text-xl font-semibold mb-4">Seleccionar Área Común</h2>
+              <div className="space-y-4">
+                {areas.map((area) => (
+                  <div
+                    key={area.id}
+                    onClick={() => setSelectedArea(area)}
+                    className={`p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                      selectedArea?.id === area.id
+                        ? 'border-blue-500 bg-blue-50'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <h3 className="font-medium text-lg">{area.descripcion}</h3>
+                    <div className="flex justify-between mt-2 text-sm text-gray-600">
+                      <span>Capacidad: {area.capacidad_max} personas</span>
+                      <span>Costo: ${area.costo}</span>
                     </div>
+                  </div>
+                ))}
+              </div>
+            </div>
 
-                    {/* Form de reprogramación inline */}
-                    {enEdicion && (
-                      <div className="mt-3 border-t pt-3">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                          <div className="flex flex-col">
-                            <label className="text-xs text-gray-500 mb-1">Fecha</label>
-                            <input
-                              type="date"
-                              value={editFecha}
-                              onChange={(e) => setEditFecha(e.target.value)}
-                              className="border rounded-lg px-3 py-2"
-                            />
-                          </div>
-                          <div className="flex flex-col">
-                            <label className="text-xs text-gray-500 mb-1">
-                              Hora inicio
-                            </label>
-                            <input
-                              type="time"
-                              value={editIni}
-                              onChange={(e) => setEditIni(e.target.value)}
-                              className="border rounded-lg px-3 py-2"
-                            />
-                          </div>
-                          <div className="flex flex-col">
-                            <label className="text-xs text-gray-500 mb-1">Hora fin</label>
-                            <input
-                              type="time"
-                              value={editFin}
-                              onChange={(e) => setEditFin(e.target.value)}
-                              className="border rounded-lg px-3 py-2"
-                            />
-                          </div>
-                        </div>
+            {/* Paso 5: Seleccionar fecha */}
+            {selectedArea && (
+              <div className="bg-white rounded-lg shadow-md p-6">
+                <h2 className="text-xl font-semibold mb-4">Seleccionar Fecha</h2>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(e) => setSelectedDate(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
+            )}
 
-                        <div className="flex gap-2 mt-3">
-                          <Button onClick={() => saveEdit(r.id)}>Guardar</Button>
-                          <SecondaryButton onClick={() => setEditingId(null)}>
-                            Cancelar
-                          </SecondaryButton>
+            {/* Paso 2 y 4: Mostrar horarios disponibles */}
+            {selectedArea && selectedDate && (
+              <div className="bg-white rounded-lg shadow-md p-6">
+                <h2 className="text-xl font-semibold mb-4">Horarios Disponibles</h2>
+                <p className="text-sm text-gray-600 mb-4">
+                  {selectedArea.descripcion} - {selectedDate}
+                </p>
+
+                {loadingDisponibilidad ? (
+                  <div className="text-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+                    <p className="mt-2 text-gray-600">Consultando disponibilidad...</p>
+                  </div>
+                ) : disponibilidad ? (
+                  <div className="space-y-4">
+                    {disponibilidad.horarios_disponibles.length === 0 ? (
+                      <p className="text-gray-500 text-center py-4">
+                        No hay horarios disponibles para esta fecha
+                      </p>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-3">
+                        {disponibilidad.horarios_disponibles.map((horario, index) => (
+                          <button
+                            key={index}
+                            onClick={() => confirmarReserva(horario.hora_ini, horario.hora_fin)}
+                            disabled={!horario.disponible || creandoReserva}
+                            className={`p-3 rounded-lg text-left transition-all ${
+                              horario.disponible
+                                ? 'bg-green-50 border border-green-200 text-green-700 hover:bg-green-100'
+                                : 'bg-gray-50 border border-gray-200 text-gray-400 cursor-not-allowed'
+                            }`}
+                          >
+                            <div className="flex justify-between items-center">
+                              <span className="font-medium">
+                                {horario.hora_ini} - {horario.hora_fin}
+                              </span>
+                              <span className="text-sm">
+                                {horario.disponible ? 'Disponible' : 'Ocupado'}
+                              </span>
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Mostrar reservas existentes */}
+                    {disponibilidad.reservas_existentes.length > 0 && (
+                      <div className="mt-6 pt-4 border-t">
+                        <h3 className="font-medium text-gray-700 mb-2">Reservas del día:</h3>
+                        <div className="space-y-2">
+                          {disponibilidad.reservas_existentes.map((reserva) => (
+                            <div key={reserva.id} className="p-2 bg-red-50 border border-red-200 rounded text-sm">
+                              <span className="text-red-700">
+                                Ocupado por {reserva.usuario?.nombre} - Estado: {reserva.estado}
+                              </span>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
+                  </div>
+                ) : (
+                  <p className="text-gray-500 text-center py-4">
+                    Selecciona un área y fecha para ver disponibilidad
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* LADO DERECHO: Mis Reservas */}
+          <div className="bg-white rounded-lg shadow-md p-6">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-semibold">Mis Reservas</h2>
+              <button
+                onClick={cargarMisReservas}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Actualizar
+              </button>
+            </div>
+
+            {misReservas.length === 0 ? (
+              <p className="text-gray-500 text-center py-8">
+                No tienes reservas registradas
+              </p>
+            ) : (
+              <div className="space-y-4">
+                {misReservas
+                  .sort((a, b) => new Date(b.fecha || '').getTime() - new Date(a.fecha || '').getTime())
+                  .map((reserva) => (
+                    <div
+                      key={reserva.id}
+                      className={`p-4 border rounded-lg ${
+                        reserva.estado === 'confirmada' ? 'border-green-200 bg-green-50' :
+                        reserva.estado === 'cancelada' ? 'border-red-200 bg-red-50' :
+                        'border-gray-200 bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h3 className="font-medium">{reserva.area?.descripcion}</h3>
+                          <p className="text-sm text-gray-600">
+                            Fecha: {reserva.fecha}
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            Reserva #{reserva.id}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${
+                            reserva.estado === 'confirmada' ? 'bg-green-100 text-green-800' :
+                            reserva.estado === 'cancelada' ? 'bg-red-100 text-red-800' :
+                            'bg-gray-100 text-gray-800'
+                          }`}>
+                            {reserva.estado || 'pendiente'}
+                          </span>
+                          {reserva.estado === 'confirmada' && (
+                            <button
+                              onClick={() => cancelarReserva(reserva)}
+                              className="block mt-2 px-3 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700"
+                            >
+                              Cancelar
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
