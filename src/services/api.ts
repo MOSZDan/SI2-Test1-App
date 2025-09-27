@@ -113,6 +113,38 @@ export type HorarioDTO = {
 export type HorarioCreate = { id_area_c: number; hora_ini: string; hora_fin: string };
 export type HorarioUpdate = Partial<HorarioCreate>;
 
+/* ========= Reservas ========= */
+export type ReservaDTO = {
+  id: number;
+  codigousuario: number;
+  idareac: number;
+  fecha: string;    // YYYY-MM-DD
+  horaini: string;  // HH:MM:SS
+  horafin: string;  // HH:MM:SS
+  estado: string | null;
+};
+
+export type ReservaCreate = {
+  idareac: number;
+  fecha: string;     // YYYY-MM-DD
+  hora_ini: string;  // HH:MM
+  hora_fin: string;  // HH:MM
+};
+
+export type ReservaReprogramar = {
+  fecha: string;     // YYYY-MM-DD
+  hora_ini: string;  // HH:MM
+  hora_fin: string;  // HH:MM
+};
+
+export type DisponibilidadResp = {
+  area: { id: number; descripcion: string; estado: string | null };
+  fecha: string;
+  horarios: { id: number; hora_ini: string; hora_fin: string }[];
+  ocupadas: { id: number; horaini: string; horafin: string; estado: string | null }[];
+  libres: { hora_ini: string; hora_fin: string }[];
+};
+
 /* ========= Helpers ========= */
 function buildQuery(params?: Record<string, any>) {
   const q = new URLSearchParams();
@@ -262,6 +294,36 @@ export const api = {
       token,
     });
   },
+
+  // --- Reservas ---
+  disponibilidad(token: string, idareac: number, fecha: string) {
+    const q = buildQuery({ idareac, fecha });
+    return http<DisponibilidadResp>(`${API_PREFIX}/reservas/disponibilidad/${q}`, { token });
+  },
+  crearReserva(token: string, payload: ReservaCreate) {
+    return http<ReservaDTO>(`${API_PREFIX}/reservas/`, {
+      method: "POST",
+      token,
+      body: JSON.stringify(payload),
+    });
+  },
+  misReservas(token: string) {
+    return http<Paged<ReservaDTO> | ReservaDTO[]>(`${API_PREFIX}/reservas/mias/`, { token });
+  },
+  cancelarReserva(token: string, id: number) {
+    return http<{ detail: string }>(`${API_PREFIX}/reservas/${id}/cancelar/`, {
+      method: "POST",
+      token,
+      body: JSON.stringify({}),
+    });
+  },
+  reprogramarReserva(token: string, id: number, payload: ReservaReprogramar) {
+    return http<ReservaDTO>(`${API_PREFIX}/reservas/${id}/reprogramar/`, {
+      method: "POST",
+      token,
+      body: JSON.stringify(payload),
+    });
+  },
 };
 
 /* ========= Facade para páginas de Áreas (con namespace horarios) ========= */
@@ -285,4 +347,18 @@ export const areasApi = {
     remove: (token: string, id: number) =>
       api.horarioDelete(token, id),
   },
+};
+
+/* ========= Facade para páginas de Reservas ========= */
+export const reservasApi = {
+  disponibilidad: (token: string, idareac: number, fecha: string) =>
+    api.disponibilidad(token, idareac, fecha),
+  crear: (token: string, payload: ReservaCreate) =>
+    api.crearReserva(token, payload),
+  mis: (token: string) =>
+    api.misReservas(token),
+  cancelar: (token: string, id: number) =>
+    api.cancelarReserva(token, id),
+  reprogramar: (token: string, id: number, payload: ReservaReprogramar) =>
+    api.reprogramarReserva(token, id, payload),
 };

@@ -17,6 +17,7 @@ import Casos from "./pages/Casos";
 import ComunicadosList from "./pages/ComunicadosList";
 import ComunicadosPublicar from "./pages/ComunicadosPublicar";
 import AreasComunesConfig from "./pages/AreasComunesConfig";
+import Reservas from "./pages/Reservas";
 
 // Ruta que cierra sesión y redirige
 function Logout() {
@@ -115,6 +116,14 @@ export default function App() {
                 element={
                     <PrivateRoute>
                         <AreasComunesConfig/>
+                    </PrivateRoute>
+                }
+            />
+            <Route
+                path="/reservas"
+                element={
+                    <PrivateRoute>
+                        <Reservas/>
                     </PrivateRoute>
                 }
             />
