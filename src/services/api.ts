@@ -87,6 +87,32 @@ export type ComunicadoPublishResponse = {
   mensaje: string;
 };
 
+/* ========= Áreas comunes / Horarios ========= */
+export type AreaComunDTO = {
+  id: number;
+  descripcion: string;
+  costo: number;           // decimal
+  capacidad_max: number;   // smallint
+  estado: string;          // 'activo' | 'inactivo' | 'mantenimiento' (texto)
+};
+
+export type AreaComunCreate = {
+  descripcion: string;
+  costo: number;
+  capacidad_max: number;
+  estado: "activo" | "inactivo" | "mantenimiento";
+};
+export type AreaComunUpdate = Partial<AreaComunCreate>;
+
+export type HorarioDTO = {
+  id: number;
+  hora_ini: string;  // "HH:MM:SS"
+  hora_fin: string;  // "HH:MM:SS"
+  id_area_c: number; // FK
+};
+export type HorarioCreate = { id_area_c: number; hora_ini: string; hora_fin: string };
+export type HorarioUpdate = Partial<HorarioCreate>;
+
 /* ========= Helpers ========= */
 function buildQuery(params?: Record<string, any>) {
   const q = new URLSearchParams();
@@ -139,9 +165,8 @@ export const api = {
     return http<Paged<UserDTO>>(`${API_PREFIX}/usuarios/${q}`, { token });
   },
 
-  // --- Roles activos (para armar selects de rol/tipo) ---
+  // --- Roles activos (para selects de rol/tipo) ---
   listRolesActivos(token: string) {
-    // tu RolViewSet permite filtrar por 'tipo' y 'estado'
     const q = buildQuery({ estado: "activo", ordering: "id" });
     return http<Paged<{ id: number; descripcion: string; tipo?: string; estado?: string }>>(
       `${API_PREFIX}/roles/${q}`,
@@ -149,7 +174,7 @@ export const api = {
     );
   },
 
-  // --- Usuarios por un rol específico (usa filterset idrol) ---
+  // --- Usuarios por un rol específico ---
   usuariosPorRol(token: string, idrol: number, page_size = 300) {
     const q = buildQuery({ estado: "activo", idrol, page_size });
     return http<Paged<UserDTO>>(`${API_PREFIX}/usuarios/${q}`, { token });
@@ -181,5 +206,83 @@ export const api = {
   ) {
     const q = buildQuery(params);
     return http<Paged<ComunicadoDTO>>(`${API_PREFIX}/comunicados/${q}`, { token });
+  },
+
+  // --- Áreas comunes ---
+  areasList(
+    token: string,
+    params?: { search?: string; page?: number; page_size?: number; estado?: string; ordering?: string }
+  ) {
+    const q = buildQuery(params);
+    return http<Paged<AreaComunDTO>>(`${API_PREFIX}/areas-comunes/${q}`, { token });
+  },
+  areaCreate(token: string, payload: AreaComunCreate) {
+    return http<AreaComunDTO>(`${API_PREFIX}/areas-comunes/`, {
+      method: "POST",
+      token,
+      body: JSON.stringify(payload),
+    });
+  },
+  areaUpdate(token: string, id: number, payload: AreaComunUpdate) {
+    return http<AreaComunDTO>(`${API_PREFIX}/areas-comunes/${id}/`, {
+      method: "PUT",
+      token,
+      body: JSON.stringify(payload),
+    });
+  },
+  areaDelete(token: string, id: number) {
+    return http<void>(`${API_PREFIX}/areas-comunes/${id}/`, {
+      method: "DELETE",
+      token,
+    });
+  },
+
+  // --- Horarios ---
+  horariosList(token: string, idAreaC?: number, params?: { page?: number; page_size?: number; ordering?: string }) {
+    const q = buildQuery({ ...(params || {}), ...(idAreaC ? { id_area_c: idAreaC } : {}) });
+    return http<Paged<HorarioDTO>>(`${API_PREFIX}/horarios/${q}`, { token });
+  },
+  horarioCreate(token: string, payload: HorarioCreate) {
+    return http<HorarioDTO>(`${API_PREFIX}/horarios/`, {
+      method: "POST",
+      token,
+      body: JSON.stringify(payload),
+    });
+  },
+  horarioUpdate(token: string, id: number, payload: HorarioUpdate) {
+    return http<HorarioDTO>(`${API_PREFIX}/horarios/${id}/`, {
+      method: "PUT",
+      token,
+      body: JSON.stringify(payload),
+    });
+  },
+  horarioDelete(token: string, id: number) {
+    return http<void>(`${API_PREFIX}/horarios/${id}/`, {
+      method: "DELETE",
+      token,
+    });
+  },
+};
+
+/* ========= Facade para páginas de Áreas (con namespace horarios) ========= */
+export const areasApi = {
+  list: (token: string, params?: { search?: string; page?: number; page_size?: number; estado?: string; ordering?: string }) =>
+    api.areasList(token, params),
+  create: (token: string, payload: AreaComunCreate) =>
+    api.areaCreate(token, payload),
+  update: (token: string, id: number, payload: AreaComunUpdate) =>
+    api.areaUpdate(token, id, payload),
+  remove: (token: string, id: number) =>
+    api.areaDelete(token, id),
+
+  horarios: {
+    list: (token: string, idAreaC?: number, params?: { page?: number; page_size?: number; ordering?: string }) =>
+      api.horariosList(token, idAreaC, params),
+    create: (token: string, payload: HorarioCreate) =>
+      api.horarioCreate(token, payload),
+    update: (token: string, id: number, payload: HorarioUpdate) =>
+      api.horarioUpdate(token, id, payload),
+    remove: (token: string, id: number) =>
+      api.horarioDelete(token, id),
   },
 };

@@ -43,7 +43,7 @@ export const PAQUETES: Paquete[] = [
     casos: [
       { name: "Publicar avisos", to: "/comunicados/publicar" },
       { name: "Consultar avisos", to: "/comunicados" },
-      { name: "Configurar áreas comunes" },
+      { name: "Configurar áreas comunes", to: "/areas-comunes/config" },
       { name: "Gestionar reservas" },
       { name: "Pagar reserva" },
       { name: "Notificaciones" },
