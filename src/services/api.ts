@@ -202,6 +202,49 @@ export type HorarioForm = {
   hora_fin: string;
 };
 
+// ========= TIPOS DE COMUNICADOS =========
+
+export type ComunicadoPayload = {
+  tipo: string;
+  fecha: string;
+  hora: string;
+  titulo: string;
+  contenido: string;
+  url?: string;
+  destinatarios: Destinatarios;
+  prioridad: Prioridad;
+};
+
+export type Destinatarios = "todos" | "copropietarios" | "inquilinos" | "administradores" | "usuarios" | number[];
+
+export type Prioridad = "baja" | "media" | "alta" | "urgente";
+
+export type Paged<T> = {
+  results: T[];
+  count: number;
+  next: string | null;
+  previous: string | null;
+};
+
+// ========= TIPOS DE RESERVAS =========
+
+export type ReservaDTO = {
+  id: number;
+  codigo_usuario: number | null;
+  id_area_c: number | null;
+  fecha: string | null;
+  estado: string | null;
+  usuario?: {
+    codigo: number;
+    nombre: string;
+    apellido: string;
+  };
+  area?: {
+    id: number;
+    descripcion: string;
+  };
+};
+
 // ========= FUNCIONES DE UTILIDAD =========
 
 function buildQuery(params: Record<string, any>) {
@@ -216,7 +259,7 @@ function buildQuery(params: Record<string, any>) {
 
 export const api = {
   async login(email: string, password: string): Promise<{ token: string; user: any }> {
-    const response = await http<{ token: string; user: any }>(`${API_BASE}/api-token-auth/`, {
+    const response = await http<{ token: string; user: any }>(`${API_PREFIX}/auth/login/`, {
       method: "POST",
       body: JSON.stringify({ username: email, password }),
     });
@@ -231,7 +274,7 @@ export const api = {
     sexo: "M" | "F";
     telefono?: string;
   }): Promise<{ message: string }> {
-    const response = await http<{ message: string }>(`${API_PREFIX}/register/`, {
+    const response = await http<{ message: string }>(`${API_PREFIX}/auth/register/`, {
       method: "POST",
       body: JSON.stringify(userData),
     });
@@ -239,8 +282,45 @@ export const api = {
   },
 
   async getProfile(token: string): Promise<any> {
-    return http<any>(`${API_PREFIX}/profile/`, { token });
+    return http<any>(`${API_PREFIX}/auth/user/`, { token });
   },
+
+  async logout(token: string): Promise<void> {
+    return http<void>(`${API_PREFIX}/auth/logout/`, {
+      method: "POST",
+      token
+    });
+  },
+
+  // ========= FUNCIONES PARA COMUNICADOS =========
+  async listRolesActivos(token: string): Promise<Rol[]> {
+    const data = await http<any>(`${API_PREFIX}/roles/?estado=activo`, { token });
+    return Array.isArray(data) ? data : data.results || [];
+  },
+
+  async usuariosActivos(token: string): Promise<Usuario[]> {
+    const data = await http<any>(`${API_PREFIX}/usuarios/?estado=activo`, { token });
+    return Array.isArray(data) ? data : data.results || [];
+  },
+
+  async usuariosPorRol(token: string, rolId: number): Promise<Usuario[]> {
+    const data = await http<any>(`${API_PREFIX}/usuarios/?idrol=${rolId}&estado=activo`, { token });
+    return Array.isArray(data) ? data : data.results || [];
+  },
+
+  async usuariosPorRoles(token: string, roleIds: number[]): Promise<Usuario[]> {
+    const roleQuery = roleIds.map(id => `idrol=${id}`).join('&');
+    const data = await http<any>(`${API_PREFIX}/usuarios/?${roleQuery}&estado=activo`, { token });
+    return Array.isArray(data) ? data : data.results || [];
+  },
+
+  async publicarComunicado(token: string, payload: ComunicadoPayload): Promise<any> {
+    return http<any>(`${API_PREFIX}/comunicados/`, {
+      method: "POST",
+      token,
+      body: JSON.stringify(payload)
+    });
+  }
 };
 
 // ========= API DE USUARIOS =========
@@ -405,16 +485,16 @@ export const multasAPI = {
 
 export const areasApi = {
   async list(token: string): Promise<AreaComunDTO[]> {
-    const data = await http<any>(`${API_PREFIX}/areas-comunes/`, { token });
+    const data = await http<any>(`${API_PREFIX}/areascomunes/`, { token });
     return Array.isArray(data) ? data : data.results || [];
   },
 
   async get(token: string, id: number): Promise<AreaComunDTO> {
-    return http<AreaComunDTO>(`${API_PREFIX}/areas-comunes/${id}/`, { token });
+    return http<AreaComunDTO>(`${API_PREFIX}/areascomunes/${id}/`, { token });
   },
 
   async create(token: string, payload: AreaComunForm): Promise<AreaComunDTO> {
-    return http<AreaComunDTO>(`${API_PREFIX}/areas-comunes/`, {
+    return http<AreaComunDTO>(`${API_PREFIX}/areascomunes/`, {
       method: "POST",
       token,
       body: JSON.stringify(payload)
@@ -422,7 +502,7 @@ export const areasApi = {
   },
 
   async update(token: string, id: number, payload: Partial<AreaComunForm>): Promise<AreaComunDTO> {
-    return http<AreaComunDTO>(`${API_PREFIX}/areas-comunes/${id}/`, {
+    return http<AreaComunDTO>(`${API_PREFIX}/areascomunes/${id}/`, {
       method: "PATCH",
       token,
       body: JSON.stringify(payload)
@@ -430,19 +510,17 @@ export const areasApi = {
   },
 
   async delete(token: string, id: number): Promise<void> {
-    return http<void>(`${API_PREFIX}/areas-comunes/${id}/`, { method: "DELETE", token });
+    return http<void>(`${API_PREFIX}/areascomunes/${id}/`, { method: "DELETE", token });
   },
 
-  // Cambié el nombre de 'delete' a 'remove' para evitar conflictos con la palabra reservada
   async remove(token: string, id: number): Promise<void> {
-    return http<void>(`${API_PREFIX}/areas-comunes/${id}/`, { method: "DELETE", token });
+    return http<void>(`${API_PREFIX}/areascomunes/${id}/`, { method: "DELETE", token });
   },
 
   // ========= SUB-API DE HORARIOS =========
   horarios: {
     async list(token: string, areaId: number): Promise<{ results: HorarioDTO[] }> {
       const data = await http<any>(`${API_PREFIX}/horarios/?id_area_c=${areaId}`, { token });
-      // Retornamos en el formato que espera el componente
       return Array.isArray(data) ? { results: data } : { results: data.results || [] };
     },
 
@@ -518,32 +596,249 @@ export function updateCaso({ token, id, payload }: {
   return http<any>(`${API_PREFIX}/casos/${id}/`, { method: "PATCH", token, body: JSON.stringify(payload) });
 }
 
-// ========= API DE DETECCIÓN AI =========
+// ========= API DE DETECCIÓN AI - CORREGIDA PARA TU BACKEND =========
 
-export async function uploadImageForDetection(token: string, file: File, tipo: 'face' | 'plate' = 'face') {
-  const formData = new FormData();
-  formData.append('image', file);
-  formData.append('detection_type', tipo);
+// API de Reconocimiento Facial
+export const reconocimientoFacialAPI = {
+  async list(token: string) {
+    const data = await http<any>(`${API_PREFIX}/reconocimientofacial/`, { token });
+    return Array.isArray(data) ? data : data.results || [];
+  },
 
-  const response = await fetch(`${API_PREFIX}/ai-detection/`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Token ${token}`,
-    },
-    body: formData,
-  });
+  async get(token: string, id: number) {
+    return http<any>(`${API_PREFIX}/reconocimientofacial/${id}/`, { token });
+  },
 
-  if (!response.ok) {
-    const errorData = await response.json();
-    throw new Error(errorData.detail || 'Error en la detección');
+  async create(token: string, file: File, ubicacion_camara = "Web App") {
+    const formData = new FormData();
+    formData.append('image', file);
+    formData.append('ubicacion_camara', ubicacion_camara);
+
+    const response = await fetch(`${API_PREFIX}/reconocimientofacial/`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Token ${token}`,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || 'Error en reconocimiento facial');
+    }
+
+    return response.json();
   }
+};
 
-  return response.json();
-}
+// API de Perfil Facial
+export const perfilFacialAPI = {
+  async list(token: string) {
+    const data = await http<any>(`${API_PREFIX}/perfilfacial/`, { token });
+    return Array.isArray(data) ? data : data.results || [];
+  },
 
-export async function getDetectionHistory(token: string) {
-  return http<any>(`${API_PREFIX}/ai-detection/history/`, { token });
-}
+  async get(token: string, id: number) {
+    return http<any>(`${API_PREFIX}/perfilfacial/${id}/`, { token });
+  },
+
+  async create(token: string, file: File, codigo_usuario: number) {
+    const formData = new FormData();
+    formData.append('image', file);
+    formData.append('codigo_usuario', codigo_usuario.toString());
+
+    const response = await fetch(`${API_PREFIX}/perfilfacial/`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Token ${token}`,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || 'Error registrando perfil facial');
+    }
+
+    return response.json();
+  },
+
+  async delete(token: string, id: number): Promise<void> {
+    return http<void>(`${API_PREFIX}/perfilfacial/${id}/`, { method: "DELETE", token });
+  }
+};
+
+// API de Detección de Placa
+export const deteccionPlacaAPI = {
+  async list(token: string) {
+    const data = await http<any>(`${API_PREFIX}/deteccionplaca/`, { token });
+    return Array.isArray(data) ? data : data.results || [];
+  },
+
+  async get(token: string, id: number) {
+    return http<any>(`${API_PREFIX}/deteccionplaca/${id}/`, { token });
+  },
+
+  async create(token: string, file: File, ubicacion_camara = "Web App") {
+    const formData = new FormData();
+    formData.append('image', file);
+    formData.append('ubicacion_camara', ubicacion_camara);
+
+    const response = await fetch(`${API_PREFIX}/deteccionplaca/`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Token ${token}`,
+      },
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.detail || 'Error en detección de placa');
+    }
+
+    return response.json();
+  }
+};
+
+// API de Reportes de Seguridad
+export const reporteSeguridadAPI = {
+  async list(token: string) {
+    const data = await http<any>(`${API_PREFIX}/reporteseguridad/`, { token });
+    return Array.isArray(data) ? data : data.results || [];
+  },
+
+  async get(token: string, id: number) {
+    return http<any>(`${API_PREFIX}/reporteseguridad/${id}/`, { token });
+  },
+
+  async create(token: string, payload: any) {
+    return http<any>(`${API_PREFIX}/reporteseguridad/`, {
+      method: "POST",
+      token,
+      body: JSON.stringify(payload)
+    });
+  }
+};
+
+// ========= API DE RESERVAS =========
+
+export const reservasApi = {
+  async list(token: string): Promise<ReservaDTO[]> {
+    const data = await http<any>(`${API_PREFIX}/reserva/`, { token });
+    return Array.isArray(data) ? data : data.results || [];
+  },
+
+  async get(token: string, id: number): Promise<ReservaDTO> {
+    return http<ReservaDTO>(`${API_PREFIX}/reserva/${id}/`, { token });
+  },
+
+  async create(token: string, payload: { codigo_usuario: number; id_area_c: number; fecha: string }): Promise<ReservaDTO> {
+    return http<ReservaDTO>(`${API_PREFIX}/reserva/`, {
+      method: "POST",
+      token,
+      body: JSON.stringify(payload)
+    });
+  },
+
+  async update(token: string, id: number, payload: Partial<{ estado: string; fecha: string }>): Promise<ReservaDTO> {
+    return http<ReservaDTO>(`${API_PREFIX}/reserva/${id}/`, {
+      method: "PATCH",
+      token,
+      body: JSON.stringify(payload)
+    });
+  },
+
+  async delete(token: string, id: number): Promise<void> {
+    return http<void>(`${API_PREFIX}/reserva/${id}/`, { method: "DELETE", token });
+  },
+};
+
+// ========= APIS ADICIONALES COMPLETAS =========
+
+// API de Vehículos
+export const vehiculosAPI = {
+  async list(token: string) {
+    const data = await http<any>(`${API_PREFIX}/vehiculos/`, { token });
+    return Array.isArray(data) ? data : data.results || [];
+  },
+
+  async get(token: string, id: number) {
+    return http<any>(`${API_PREFIX}/vehiculos/${id}/`, { token });
+  },
+
+  async create(token: string, payload: any) {
+    return http<any>(`${API_PREFIX}/vehiculos/`, { method: "POST", token, body: JSON.stringify(payload) });
+  },
+
+  async update(token: string, id: number, payload: any) {
+    return http<any>(`${API_PREFIX}/vehiculos/${id}/`, { method: "PATCH", token, body: JSON.stringify(payload) });
+  },
+
+  async delete(token: string, id: number): Promise<void> {
+    return http<void>(`${API_PREFIX}/vehiculos/${id}/`, { method: "DELETE", token });
+  }
+};
+
+// API de Notificaciones
+export const notificacionesAPI = {
+  async list(token: string) {
+    const data = await http<any>(`${API_PREFIX}/notificaciones/`, { token });
+    return Array.isArray(data) ? data : data.results || [];
+  },
+
+  async get(token: string, id: number) {
+    return http<any>(`${API_PREFIX}/notificaciones/${id}/`, { token });
+  },
+
+  async create(token: string, payload: any) {
+    return http<any>(`${API_PREFIX}/notificaciones/`, { method: "POST", token, body: JSON.stringify(payload) });
+  },
+
+  async update(token: string, id: number, payload: any) {
+    return http<any>(`${API_PREFIX}/notificaciones/${id}/`, { method: "PATCH", token, body: JSON.stringify(payload) });
+  },
+
+  async delete(token: string, id: number): Promise<void> {
+    return http<void>(`${API_PREFIX}/notificaciones/${id}/`, { method: "DELETE", token });
+  }
+};
+
+// API de Tareas
+export const tareasAPI = {
+  async list(token: string) {
+    const data = await http<any>(`${API_PREFIX}/tareas/`, { token });
+    return Array.isArray(data) ? data : data.results || [];
+  },
+
+  async get(token: string, id: number) {
+    return http<any>(`${API_PREFIX}/tareas/${id}/`, { token });
+  },
+
+  async create(token: string, payload: any) {
+    return http<any>(`${API_PREFIX}/tareas/`, { method: "POST", token, body: JSON.stringify(payload) });
+  },
+
+  async update(token: string, id: number, payload: any) {
+    return http<any>(`${API_PREFIX}/tareas/${id}/`, { method: "PATCH", token, body: JSON.stringify(payload) });
+  },
+
+  async delete(token: string, id: number): Promise<void> {
+    return http<void>(`${API_PREFIX}/tareas/${id}/`, { method: "DELETE", token });
+  }
+};
+
+// API de Bitácora
+export const bitacoraAPI = {
+  async list(token: string) {
+    const data = await http<any>(`${API_PREFIX}/bitacora/`, { token });
+    return Array.isArray(data) ? data : data.results || [];
+  },
+
+  async get(token: string, id: number) {
+    return http<any>(`${API_PREFIX}/bitacora/${id}/`, { token });
+  }
+};
 
 // ========= EXPORTACIONES ADICIONALES =========
 
@@ -557,3 +852,4 @@ export type RegisterPayload = {
 export type RegisterResponse =
   | { ok: true; user?: UserDTO; id?: number; detail?: string }
   | { ok: false; detail?: string; fields?: Record<string, string | string[]> };
+

@@ -54,10 +54,9 @@ export default function CuotasMultas() {
       setLoading(true);
       setError(null);
       const [rp, rm] = await Promise.all([pagosAPI.list(token!), multasAPI.list(token!)]);
-      const pagosData = Array.isArray(rp) ? rp : rp.results || [];
-      const multasData = Array.isArray(rm) ? rm : rm.results || [];
-      setPagos(pagosData);
-      setMultas(multasData);
+      // pagosAPI.list y multasAPI.list ya devuelven arrays directamente
+      setPagos(rp);
+      setMultas(rm);
     } catch (e) {
       setError("No se pudieron cargar los catálogos.");
     } finally {
