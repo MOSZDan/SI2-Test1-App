@@ -1,8 +1,24 @@
 // pages/AIDetection.tsx - VERSIÓN CON DEBUGGING Y LOGGING DETALLADO
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useAuth } from "../context/AuthContext";
-import { aiAPI, type FacialProfile } from "../services/ai";
+import {
+  facialRecognitionAPI,
+  plateDetectionAPI,
+  validateImageFile,
+  resizeImage
+} from "../services/ai";
 import Navbar from "../components/Navbar";
+
+// Tipo para perfiles faciales
+type FacialProfile = {
+  id: number;
+  user_id: number;
+  user_name: string;
+  user_email?: string;
+  image_url: string;
+  registration_time: string;
+  fecha_registro?: string;
+};
 
 type TabType = "recognition" | "registration" | "profiles";
 // Definimos un tipo explícito para los estados de cámara
@@ -33,10 +49,9 @@ export default function AIDetection() {
 
   // Variable booleana para simplificar comparaciones
   const isStartingCamera = cameraStatus === 'starting';
-  const isCameraRunning = cameraStatus === 'running';
 
   // Función de logging detallado
-  const log = useCallback((message: string, data?: any) => {
+  const log = useCallback((message: string, data?: unknown) => {
     const timestamp = new Date().toISOString().split('T')[1].split('.')[0];
     console.log(`[${timestamp}] AIDetection: ${message}`, data || '');
   }, []);
@@ -334,11 +349,11 @@ export default function AIDetection() {
     try {
       log("🔄 Cargando perfiles faciales...");
       setLoading(true);
-      const response = await aiAPI.listProfiles(token);
+      const response = await facialRecognitionAPI.listProfiles(token);
 
-      if (response.success) {
-        log(`✅ Perfiles cargados: ${response.profiles.length}`);
-        setProfiles(response.profiles);
+      if (response.success && response.data) {
+        log(`✅ Perfiles cargados: ${(response.data as { profiles?: FacialProfile[] }).profiles?.length || 0}`);
+        setProfiles((response.data as { profiles?: FacialProfile[] }).profiles || []);
       } else {
         log("❌ Error cargando perfiles:", response.error);
         setError(response.error || "Error cargando perfiles");
@@ -373,15 +388,21 @@ export default function AIDetection() {
       setError(null);
       setResult("Procesando reconocimiento facial...");
 
-      const response = await aiAPI.recognizeFace(token, capturedImage, "Web App");
+      // Convertir base64 a File
+      const file = await base64ToFile(capturedImage, "captured-image.jpg");
+      const response = await facialRecognitionAPI.recognize(token, file, "Web App");
       log("✅ Respuesta del reconocimiento:", response);
 
       let resultText = "";
 
-      if (response.user) {
-        resultText = `¡Persona identificada! ${response.user.nombre} (${response.user.correo}) - Confianza: ${(response.confidence * 100).toFixed(2)}%`;
+      if (response.success && response.data) {
+        if (response.data.is_resident && response.data.user_name) {
+          resultText = `¡Persona identificada! ${response.data.user_name} - Confianza: ${(response.data.confidence * 100).toFixed(2)}%`;
+        } else {
+          resultText = "Persona no reconocida en el sistema";
+        }
       } else {
-        resultText = "Persona no reconocida en el sistema";
+        resultText = response.message || "Error en el reconocimiento";
       }
 
       setResult(resultText);
@@ -416,20 +437,26 @@ export default function AIDetection() {
       setError(null);
       setResult("Procesando detección de placa...");
 
-      const response = await aiAPI.detectPlate(token, capturedImage, "Web App");
+      // Convertir base64 a File
+      const file = await base64ToFile(capturedImage, "captured-image.jpg");
+      const response = await plateDetectionAPI.detect(token, file, "Web App", "entrada");
       log("✅ Respuesta de la detección de placa:", response);
 
       let resultText = "";
 
-      if (response.plate) {
-        resultText = `Placa detectada: ${response.plate} - Confianza: ${(response.confidence * 100).toFixed(2)}%`;
-        if (response.is_authorized === true) {
-          resultText += " - Autorizada ✅";
-        } else if (response.is_authorized === false) {
-          resultText += " - No autorizada ❌";
+      if (response.success && response.data) {
+        if (response.data.plate) {
+          resultText = `Placa detectada: ${response.data.plate} - Confianza: ${(response.data.confidence * 100).toFixed(2)}%`;
+          if (response.data.is_authorized === true) {
+            resultText += " - Autorizada ✅";
+          } else if (response.data.is_authorized === false) {
+            resultText += " - No autorizada ❌";
+          }
+        } else {
+          resultText = "No se detectó ninguna placa en la imagen";
         }
       } else {
-        resultText = "No se detectó ninguna placa en la imagen";
+        resultText = response.message || "Error en la detección";
       }
 
       setResult(resultText);
@@ -453,8 +480,8 @@ export default function AIDetection() {
       return;
     }
 
-    if (!token) {
-      setError("No hay sesión activa");
+    if (!token || !user) {
+      setError("No hay sesión activa o información de usuario");
       return;
     }
 
@@ -464,7 +491,9 @@ export default function AIDetection() {
       setError(null);
       setResult("Procesando registro facial...");
 
-      const response = await aiAPI.registerCurrentUser(token, capturedImage);
+      // Convertir base64 a File
+      const file = await base64ToFile(capturedImage, "face-registration.jpg");
+      const response = await facialRecognitionAPI.registerProfile(token, file, user.codigo);
       log("✅ Respuesta del registro:", response);
 
       if (response.success) {
@@ -487,16 +516,6 @@ export default function AIDetection() {
     }
   };
 
-  // Función para subir archivo directamente
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (files && files[0]) {
-      setSelectedFile(files[0]);
-      setCapturedImage(null); // Limpiar imagen capturada si hay
-      setResult(`Archivo seleccionado: ${files[0].name}`);
-    }
-  };
-
   // Función para registrar con archivo
   const registerWithFile = async () => {
     if (!selectedFile) {
@@ -504,13 +523,15 @@ export default function AIDetection() {
       return;
     }
 
-    if (!token) {
-      setError("No hay sesión activa");
+    if (!token || !user) {
+      setError("No hay sesión activa o información de usuario");
       return;
     }
 
-    if (!user) {
-      setError("No hay información del usuario");
+    // Validar el archivo
+    const validation = validateImageFile(selectedFile);
+    if (!validation.valid) {
+      setError(validation.error || "Archivo no válido");
       return;
     }
 
@@ -520,12 +541,12 @@ export default function AIDetection() {
       setError(null);
       setResult("Procesando registro facial...");
 
-      // Convertir imagen a base64 primero
-      const base64Image = await aiAPI.fileToBase64(selectedFile);
+      // Redimensionar si es necesario
+      const processedFile = selectedFile.size > 2 * 1024 * 1024
+        ? await resizeImage(selectedFile, 1920, 1080, 0.8)
+        : selectedFile;
 
-      // Registrar con base64
-      const response = await aiAPI.registerCurrentUser(token, base64Image);
-
+      const response = await facialRecognitionAPI.registerProfile(token, processedFile, user.codigo);
       log("✅ Respuesta del registro con archivo:", response);
 
       if (response.success) {
@@ -567,13 +588,16 @@ export default function AIDetection() {
       log(`🔄 Eliminando perfil facial ID: ${profileId}...`);
       setLoading(true);
 
-      const response = await aiAPI.deleteProfile(token, profileId);
-
+      const response = await facialRecognitionAPI.deleteProfile(token, profileId);
       log("✅ Respuesta de eliminación:", response);
-      setMessage(response.message || "Perfil eliminado correctamente");
 
-      // Recargar perfiles
-      await loadProfiles();
+      if (response.success) {
+        setMessage(response.message || "Perfil eliminado correctamente");
+        // Recargar perfiles
+        await loadProfiles();
+      } else {
+        setError(response.error || "Error al eliminar el perfil");
+      }
 
     } catch (err) {
       log("❌ Error eliminando perfil:", err);
@@ -584,6 +608,23 @@ export default function AIDetection() {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Función auxiliar para convertir base64 a File
+  const base64ToFile = async (base64: string, filename: string): Promise<File> => {
+    const response = await fetch(base64);
+    const blob = await response.blob();
+    return new File([blob], filename, { type: 'image/jpeg' });
+  };
+
+  // Función para subir archivo directamente
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files[0]) {
+      setSelectedFile(files[0]);
+      setCapturedImage(null); // Limpiar imagen capturada si hay
+      setResult(`Archivo seleccionado: ${files[0].name}`);
     }
   };
 
@@ -848,7 +889,7 @@ export default function AIDetection() {
                       <h3 className="font-medium">{profile.user_name}</h3>
                       <p className="text-sm text-gray-500">{profile.user_email}</p>
                       <p className="text-xs text-gray-400 mt-1">
-                        Registrado: {new Date(profile.fecha_registro).toLocaleDateString()}
+                        Registrado: {profile.fecha_registro ? new Date(profile.fecha_registro).toLocaleDateString() : 'Fecha no disponible'}
                       </p>
                       <div className="mt-3 flex justify-end">
                         <button

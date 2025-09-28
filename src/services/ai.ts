@@ -1,261 +1,386 @@
-// services/ai.ts - VERSIÓN COMPLETA
-import { http, API_PREFIX } from "./api";
+// Servicio de IA - Comunicación directa con microservicio
+import { AI_SERVICE_BASE, AI_API_PREFIX } from './api';
 
-export type AIDetectionResponse = {
-  id: number;
-  is_resident?: boolean;
-  is_authorized?: boolean;
-  user?: {
-    codigo: number;
-    nombre: string;
-    correo: string;
-  };
-  plate?: string;
-  confidence: number;
-  timestamp: string;
-  camera_location: string;
-  status: string;
-  image_url?: string;
-};
+// ========= TIPOS ESPECÍFICOS PARA IA =========
 
-export type AIStats = {
-  facial_recognitions_today: number;
-  plate_detections_today: number;
-  residents_detected_today: number;
-  unauthorized_plates_today: number;
-  security_alerts_week: number;
-  registered_faces: number;
-};
-
-export type FacialProfile = {
-  id: number;
-  user_id: number;
-  user_name: string;
-  user_email: string;
-  image_url?: string;
-  fecha_registro: string;
-  activo: boolean;
-};
-
-export type RegisterResponse = {
+export interface AIDetectionResult {
   success: boolean;
-  message?: string;
+  message: string;
+  data?: any;
   error?: string;
-  profile_id?: number;
-  user?: {
-    codigo: number;
-    nombre: string;
-    apellido: string;
-    correo: string;
-  };
-  image_url?: string;
-};
-
-export type ListProfilesResponse = {
-  success: boolean;
-  profiles: FacialProfile[];
-  count: number;
-  error?: string;
-};
-
-export type DetectionResult = {
-  id: number;
-  image_url: string;
-  detection_type: 'face' | 'plate';
-  results: any;
-  confidence: number;
-  timestamp: string;
-  user: string;
-};
-
-// Función utilitaria para convertir base64 a blob
-function base64ToBlob(base64String: string): Blob {
-  // Extraer solo la parte base64 (sin el prefijo data:image/jpeg;base64,)
-  const base64Data = base64String.includes(',') ? base64String.split(',')[1] : base64String;
-
-  // Convertir base64 a Uint8Array
-  const binaryString = atob(base64Data);
-  const bytes = new Uint8Array(binaryString.length);
-  for (let i = 0; i < binaryString.length; i++) {
-    bytes[i] = binaryString.charCodeAt(i);
-  }
-
-  return new Blob([bytes], { type: 'image/jpeg' });
 }
 
-// Función utilitaria para hacer peticiones con FormData
-async function aiRequest<T>(endpoint: string, token: string, imageBase64: string, extraFields: Record<string, string> = {}): Promise<T> {
+export interface FacialRecognitionResult extends AIDetectionResult {
+  data?: {
+    id: number;
+    user_id?: number;
+    user_name?: string;
+    confidence: number;
+    is_resident: boolean;
+    image_url?: string;
+    detection_time: string;
+    camera_location: string;
+  };
+}
+
+export interface PlateDetectionResult extends AIDetectionResult {
+  data?: {
+    id: number;
+    plate: string;
+    confidence: number;
+    is_authorized: boolean;
+    vehicle_info?: any;
+    image_url?: string;
+    detection_time: string;
+    camera_location: string;
+  };
+}
+
+export interface ProfileRegistrationResult extends AIDetectionResult {
+  data?: {
+    profile_id: number;
+    user_id: number;
+    user_name: string;
+    image_url: string;
+    registration_time: string;
+  };
+}
+
+// ========= FUNCIÓN HTTP PARA IA =========
+
+async function aiHttp<T>(
+  url: string,
+  options: {
+    method?: string;
+    token?: string;
+    body?: string | FormData;
+    headers?: Record<string, string>;
+  } = {}
+): Promise<T> {
+  const { method = "GET", token, body, headers = {} } = options;
+
+  const config: RequestInit = {
+    method,
+    headers: {
+      ...headers,
+    },
+  };
+
+  // Solo agregar Content-Type si no es FormData
+  if (!(body instanceof FormData)) {
+    config.headers = {
+      "Content-Type": "application/json",
+      ...config.headers,
+    };
+  }
+
+  if (token) {
+    config.headers = {
+      ...config.headers,
+      Authorization: `Token ${token}`,
+    };
+  }
+
+  if (body && method !== "GET") {
+    config.body = body;
+  }
+
   try {
-    console.log(`🚀 Enviando petición a ${endpoint}...`);
-
-    // Crear FormData
-    const formData = new FormData();
-
-    // Convertir imagen a blob y agregarla
-    const imageBlob = base64ToBlob(imageBase64);
-    formData.append('image', imageBlob, 'image.jpg');
-
-    // Agregar campos adicionales
-    Object.entries(extraFields).forEach(([key, value]) => {
-      formData.append(key, value);
-    });
-
-    console.log('📊 FormData creado:', {
-      imageSize: imageBlob.size,
-      extraFields
-    });
-
-    const response = await fetch(`${API_PREFIX}/ai-detection/${endpoint}/`, {
-      method: "POST",
-      headers: {
-        'Authorization': `Token ${token}`,
-        // NO incluir Content-Type para FormData
-      },
-      body: formData
-    });
-
-    console.log('📡 Respuesta del servidor:', response.status, response.statusText);
+    const response = await fetch(url, config);
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('❌ Error del servidor:', errorText);
-      throw new Error(`Error del servidor: ${response.status} - ${errorText}`);
+      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+
+      try {
+        const errorData = await response.json();
+        if (errorData.error) {
+          errorMessage = errorData.error;
+        } else if (errorData.message) {
+          errorMessage = errorData.message;
+        } else if (errorData.detail) {
+          errorMessage = errorData.detail;
+        }
+      } catch {
+        // Si no se puede parsear el JSON de error, usar el mensaje por defecto
+      }
+
+      throw new Error(errorMessage);
     }
 
-    const result = await response.json();
-    console.log('✅ Petición exitosa:', result);
-    return result;
+    // Manejar respuestas vacías
+    if (response.status === 204) {
+      return {} as T;
+    }
+
+    return await response.json();
   } catch (error) {
-    console.error(`❌ Error en ${endpoint}:`, error);
-    throw error;
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error("Error de conexión con el servicio de IA");
   }
 }
 
-export const aiAPI = {
-  // RECONOCIMIENTO FACIAL
-  recognizeFace(token: string, imageBase64: string, cameraLocation = "Web App") {
-    return aiRequest<AIDetectionResponse>('recognize_face', token, imageBase64, {
-      camera_location: cameraLocation
+// ========= API DE RECONOCIMIENTO FACIAL =========
+
+export const facialRecognitionAPI = {
+  /**
+   * Reconocer rostro en una imagen
+   */
+  async recognize(token: string, file: File, cameraLocation = "Web App"): Promise<FacialRecognitionResult> {
+    const formData = new FormData();
+    formData.append('image', file);
+    formData.append('camera_location', cameraLocation);
+
+    return aiHttp<FacialRecognitionResult>(`${AI_API_PREFIX}/facial/recognize`, {
+      method: 'POST',
+      token,
+      body: formData,
     });
   },
 
-  // DETECCIÓN DE PLACAS
-  detectPlate(token: string, imageBase64: string, cameraLocation = "Web App", accessType = "entrada") {
-    return aiRequest<AIDetectionResponse>('detect_plate', token, imageBase64, {
-      camera_location: cameraLocation,
-      access_type: accessType
+  /**
+   * Registrar un nuevo perfil facial
+   */
+  async registerProfile(token: string, file: File, userId: number): Promise<ProfileRegistrationResult> {
+    const formData = new FormData();
+    formData.append('image', file);
+    formData.append('user_id', userId.toString());
+
+    return aiHttp<ProfileRegistrationResult>(`${AI_API_PREFIX}/facial/register`, {
+      method: 'POST',
+      token,
+      body: formData,
     });
   },
 
-  // ESTADÍSTICAS (GET request, no necesita FormData)
-  getStats(token: string) {
-    return http<AIStats>(`${API_PREFIX}/ai-detection/detection_stats/`, { token });
-  },
-
-  // REGISTRO DE PERFIL FACIAL
-  async registerCurrentUser(token: string, imageBase64: string): Promise<RegisterResponse> {
-    return aiRequest<RegisterResponse>('register_current_user', token, imageBase64);
-  },
-
-  // REGISTRO DE PERFIL PARA OTRO USUARIO
-  registerProfile(token: string, userId: number, imageBase64: string) {
-    return aiRequest<RegisterResponse>('register_profile', token, imageBase64, {
-      user_id: userId.toString()
+  /**
+   * Obtener lista de perfiles registrados
+   */
+  async listProfiles(token: string): Promise<AIDetectionResult> {
+    return aiHttp<AIDetectionResult>(`${AI_API_PREFIX}/facial/profiles`, {
+      token,
     });
   },
 
-  // REGISTRO CON ARCHIVO DIRECTO
-  async registerProfileFile(token: string, userId: number, file: File): Promise<RegisterResponse> {
+  /**
+   * Eliminar un perfil facial
+   */
+  async deleteProfile(token: string, profileId: number): Promise<AIDetectionResult> {
+    return aiHttp<AIDetectionResult>(`${AI_API_PREFIX}/facial/profiles/${profileId}`, {
+      method: 'DELETE',
+      token,
+    });
+  },
+
+  /**
+   * Obtener estadísticas de reconocimiento facial
+   */
+  async getStats(token: string): Promise<AIDetectionResult> {
+    return aiHttp<AIDetectionResult>(`${AI_API_PREFIX}/facial/stats`, {
+      token,
+    });
+  }
+};
+
+// ========= API DE DETECCIÓN DE PLACAS =========
+
+export const plateDetectionAPI = {
+  /**
+   * Detectar placa en una imagen
+   */
+  async detect(token: string, file: File, cameraLocation = "Estacionamiento", accessType = "entrada"): Promise<PlateDetectionResult> {
+    const formData = new FormData();
+    formData.append('image', file);
+    formData.append('camera_location', cameraLocation);
+    formData.append('access_type', accessType);
+
+    return aiHttp<PlateDetectionResult>(`${AI_API_PREFIX}/plates/detect`, {
+      method: 'POST',
+      token,
+      body: formData,
+    });
+  },
+
+  /**
+   * Obtener lista de detecciones
+   */
+  async listDetections(token: string): Promise<AIDetectionResult> {
+    return aiHttp<AIDetectionResult>(`${AI_API_PREFIX}/plates/detections`, {
+      token,
+    });
+  },
+
+  /**
+   * Obtener estadísticas de detección de placas
+   */
+  async getStats(token: string): Promise<AIDetectionResult> {
+    return aiHttp<AIDetectionResult>(`${AI_API_PREFIX}/plates/stats`, {
+      token,
+    });
+  }
+};
+
+// ========= API DE ESTADÍSTICAS GENERALES =========
+
+export const aiStatsAPI = {
+  /**
+   * Obtener estadísticas generales del sistema de IA
+   */
+  async getGeneral(token: string): Promise<AIDetectionResult> {
+    return aiHttp<AIDetectionResult>(`${AI_API_PREFIX}/stats/general`, {
+      token,
+    });
+  },
+
+  /**
+   * Obtener estadísticas de las últimas 24 horas
+   */
+  async getToday(token: string): Promise<AIDetectionResult> {
+    return aiHttp<AIDetectionResult>(`${AI_API_PREFIX}/stats/today`, {
+      token,
+    });
+  },
+
+  /**
+   * Obtener estadísticas de la última semana
+   */
+  async getWeek(token: string): Promise<AIDetectionResult> {
+    return aiHttp<AIDetectionResult>(`${AI_API_PREFIX}/stats/week`, {
+      token,
+    });
+  }
+};
+
+// ========= API DE SALUD DEL SERVICIO =========
+
+export const aiHealthAPI = {
+  /**
+   * Verificar estado del servicio de IA
+   */
+  async check(): Promise<{ status: string; timestamp: string; services: Record<string, boolean> }> {
     try {
-      const formData = new FormData();
-      formData.append('user_id', userId.toString());
-      formData.append('image', file);
-
-      const response = await fetch(`${API_PREFIX}/ai-detection/register_profile/`, {
-        method: "POST",
-        headers: {
-          'Authorization': `Token ${token}`,
-        },
-        body: formData
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || 'Error registrando perfil facial');
-      }
-
-      return await response.json();
+      return await aiHttp<{ status: string; timestamp: string; services: Record<string, boolean> }>(`${AI_SERVICE_BASE}/health`);
     } catch (error) {
-      console.error('Error en registerProfileFile:', error);
-      throw error;
+      throw new Error(`Servicio de IA no disponible: ${error instanceof Error ? error.message : 'Error desconocido'}`);
     }
   },
 
-  // LISTAR PERFILES (GET request, no necesita FormData)
-  listProfiles(token: string) {
-    return http<ListProfilesResponse>(`${API_PREFIX}/ai-detection/list_profiles/`, {
-      method: "GET",
-      token
-    });
-  },
+  /**
+   * Obtener información del servicio
+   */
+  async info(): Promise<{ version: string; models: string[]; capabilities: string[] }> {
+    return aiHttp<{ version: string; models: string[]; capabilities: string[] }>(`${AI_SERVICE_BASE}/info`);
+  }
+};
 
-  // ELIMINAR PERFIL (DELETE request, no necesita FormData)
-  deleteProfile(token: string, profileId: number) {
-    return http<{success: boolean; message: string}>(`${API_PREFIX}/ai-detection/${profileId}/delete_profile/`, {
-      method: "DELETE",
-      token
-    });
-  },
+// ========= UTILIDADES =========
 
-  // Utilidad para convertir File a base64
-  fileToBase64(file: File): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
-  },
+/**
+ * Verificar si el servicio de IA está disponible
+ */
+export async function checkAIServiceAvailable(): Promise<boolean> {
+  try {
+    await aiHealthAPI.check();
+    return true;
+  } catch {
+    return false;
+  }
+}
 
-  // NUEVAS FUNCIONES DE DETECCIÓN
-  uploadImageForDetection(token: string, file: File, tipo: 'face' | 'plate' = 'face'): Promise<DetectionResult> {
-    return new Promise(async (resolve, reject) => {
-      const formData = new FormData();
-      formData.append('image', file);
-      formData.append('detection_type', tipo);
+/**
+ * Validar archivo de imagen antes de enviarlo
+ */
+export function validateImageFile(file: File): { valid: boolean; error?: string } {
+  // Verificar tipo
+  const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+  if (!allowedTypes.includes(file.type)) {
+    return {
+      valid: false,
+      error: 'Tipo de archivo no válido. Solo se permiten: JPEG, PNG, WebP'
+    };
+  }
 
-      try {
-        const response = await fetch(`${API_PREFIX}/ai-detection/`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Token ${token}`,
-          },
-          body: formData,
-        });
+  // Verificar tamaño (máximo 5MB)
+  const maxSize = 5 * 1024 * 1024; // 5MB
+  if (file.size > maxSize) {
+    return {
+      valid: false,
+      error: 'El archivo es demasiado grande. Máximo 5MB.'
+    };
+  }
 
-        if (!response.ok) {
-          const errorData = await response.json();
-          return reject(new Error(errorData.detail || 'Error en la detección'));
-        }
+  return { valid: true };
+}
 
-        const result = await response.json();
-        resolve(result);
-      } catch (error) {
-        reject(error);
+/**
+ * Redimensionar imagen si es necesario (usando Canvas)
+ */
+export function resizeImage(file: File, maxWidth = 1920, maxHeight = 1080, quality = 0.8): Promise<File> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+
+    if (!ctx) {
+      reject(new Error('No se pudo crear el contexto del canvas'));
+      return;
+    }
+
+    img.onload = () => {
+      // Calcular nuevas dimensiones manteniendo proporción
+      let { width, height } = img;
+
+      if (width > maxWidth) {
+        height = (height * maxWidth) / width;
+        width = maxWidth;
       }
-    });
-  },
 
-  getDetectionHistory(token: string): Promise<DetectionResult[]> {
-    return http<any>(`${API_PREFIX}/ai-detection/history/`, { token })
-      .then(data => Array.isArray(data) ? data : data.results || []);
-  },
+      if (height > maxHeight) {
+        width = (width * maxHeight) / height;
+        height = maxHeight;
+      }
 
-  deleteDetection(token: string, id: number): Promise<void> {
-    return http<void>(`${API_PREFIX}/ai-detection/${id}/`, { method: "DELETE", token });
-  },
+      // Configurar canvas
+      canvas.width = width;
+      canvas.height = height;
 
-  getDetectionStats(token: string) {
-    return http<any>(`${API_PREFIX}/ai-detection/stats/`, { token });
+      // Dibujar imagen redimensionada
+      ctx.drawImage(img, 0, 0, width, height);
+
+      // Convertir a blob y luego a File
+      canvas.toBlob(
+        (blob) => {
+          if (blob) {
+            const resizedFile = new File([blob], file.name, {
+              type: file.type,
+              lastModified: Date.now(),
+            });
+            resolve(resizedFile);
+          } else {
+            reject(new Error('Error al procesar la imagen'));
+          }
+        },
+        file.type,
+        quality
+      );
+    };
+
+    img.onerror = () => reject(new Error('Error al cargar la imagen'));
+    img.src = URL.createObjectURL(file);
+  });
+}
+
+// ========= EXPORTACIONES =========
+
+export default {
+  facial: facialRecognitionAPI,
+  plates: plateDetectionAPI,
+  stats: aiStatsAPI,
+  health: aiHealthAPI,
+  utils: {
+    checkAvailable: checkAIServiceAvailable,
+    validateImage: validateImageFile,
+    resizeImage,
   }
 };

@@ -5,6 +5,10 @@ export const API_BASE = import.meta.env.VITE_API_BASE ||
     : "http://127.0.0.1:8000");
 export const API_PREFIX = `${API_BASE}/api`;
 
+// Configuración del microservicio de IA
+export const AI_SERVICE_BASE = import.meta.env.VITE_AI_SERVICE_BASE || "http://0.0.0.0:8001";
+export const AI_API_PREFIX = `${AI_SERVICE_BASE}/api`;
+
 // Tipos para las respuestas de la API
 export interface ApiError {
   detail?: string;
@@ -304,7 +308,7 @@ export const api = {
   async login(email: string, password: string): Promise<{ token: string; user: any }> {
     const response = await http<{ token: string; user: any }>(`${API_PREFIX}/auth/login/`, {
       method: "POST",
-      body: JSON.stringify({ username: email, password }),
+      body: JSON.stringify({ email, password }),
     });
     return response;
   },
@@ -950,4 +954,3 @@ export type RegisterPayload = {
 export type RegisterResponse =
   | { ok: true; user?: UserDTO; id?: number; detail?: string }
   | { ok: false; detail?: string; fields?: Record<string, string | string[]> };
-
