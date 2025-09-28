@@ -10,6 +10,10 @@ export type Usuario = {
   telefono?: number | null;
   estado?: string | null;
   idrol?: number | null;
+  rol?: {
+    descripcion: string;
+    tipo: string;
+  };
 };
 
 export type UsersListResult = {
@@ -46,15 +50,15 @@ export async function listUsers(opts: {
 export function getUser({ token, codigo }: { token: string; codigo: number }) {
   return http<Usuario>(`${API_PREFIX}/usuarios/${codigo}/`, { token });
 }
+
 export function patchUser({ token, codigo, payload }: { token: string; codigo: number; payload: Partial<Usuario> }) {
   return http<Usuario>(`${API_PREFIX}/usuarios/${codigo}/`, { method: "PATCH", token, body: JSON.stringify(payload) });
 }
-export function putUser({ token, codigo, payload }: { token: string; codigo: number; payload: Usuario }) {
-  return http<Usuario>(`${API_PREFIX}/usuarios/${codigo}/`, { method: "PUT", token, body: JSON.stringify(payload) });
-}
-export function createUser({ token, payload }: { token: string; payload: Partial<Usuario> }) {
+
+export function createUser({ token, payload }: { token: string; payload: Omit<Usuario, 'codigo'> }) {
   return http<Usuario>(`${API_PREFIX}/usuarios/`, { method: "POST", token, body: JSON.stringify(payload) });
 }
+
 export function deleteUser({ token, codigo }: { token: string; codigo: number }) {
   return http<void>(`${API_PREFIX}/usuarios/${codigo}/`, { method: "DELETE", token });
 }

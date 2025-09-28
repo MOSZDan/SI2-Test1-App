@@ -3,15 +3,28 @@ import { http, API_PREFIX } from "./api";
 
 export type Rol = {
   id: number;
-  descripcion: string | null;
-  tipo: string | null;
-  estado: string | null;
+  descripcion: string;
+  tipo: string;
+  estado: any;
 };
 
-type Paginated<T> = { results: T[]; next?: string | null; previous?: string | null; count?: number };
-
 export async function listRoles(token: string): Promise<Rol[]> {
-  const data = await http<Rol[] | Paginated<Rol>>(`${API_PREFIX}/roles/`, { token });
-  // Soporta ambos formatos (array plano o paginado DRF)
-  return Array.isArray(data) ? data : (data.results ?? []);
+  const data = await http<any>(`${API_PREFIX}/roles/`, { token });
+  return Array.isArray(data) ? data : data.results || [];
+}
+
+export function getRol({ token, id }: { token: string; id: number }) {
+  return http<Rol>(`${API_PREFIX}/roles/${id}/`, { token });
+}
+
+export function createRol({ token, payload }: { token: string; payload: Omit<Rol, 'id'> }) {
+  return http<Rol>(`${API_PREFIX}/roles/`, { method: "POST", token, body: JSON.stringify(payload) });
+}
+
+export function patchRol({ token, id, payload }: { token: string; id: number; payload: Partial<Rol> }) {
+  return http<Rol>(`${API_PREFIX}/roles/${id}/`, { method: "PATCH", token, body: JSON.stringify(payload) });
+}
+
+export function deleteRol({ token, id }: { token: string; id: number }) {
+  return http<void>(`${API_PREFIX}/roles/${id}/`, { method: "DELETE", token });
 }

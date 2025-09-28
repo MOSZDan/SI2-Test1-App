@@ -1,4 +1,3 @@
-// src/services/api.ts
 // Configuración central de la API
 export const API_BASE = import.meta.env.VITE_API_BASE || "http://127.0.0.1:8000";
 export const API_PREFIX = `${API_BASE}/api`;
@@ -54,7 +53,6 @@ export async function http<T>(
         } else if (errorData.message) {
           errorMessage = errorData.message;
         } else if (errorData.errors) {
-          // Manejo de errores de validación del backend Django
           const firstError = Object.values(errorData.errors)[0];
           if (Array.isArray(firstError) && firstError.length > 0) {
             errorMessage = firstError[0];
@@ -81,7 +79,107 @@ export async function http<T>(
   }
 }
 
-// API para autenticación
+// ========= TIPOS PRINCIPALES =========
+
+export type UserDTO = {
+  codigo: number;
+  nombre: string;
+  apellido: string;
+  correo: string;
+  sexo: string | null;
+  telefono: string | null;
+  estado: any;
+  idrol: number | null;
+  rol?: { id: number; descripcion: string; tipo?: string; estado?: any } | null;
+};
+
+export type Usuario = {
+  codigo: number;
+  nombre?: string | null;
+  apellido?: string | null;
+  correo?: string | null;
+  contrasena?: string | null;
+  sexo?: string | null;
+  telefono?: number | null;
+  estado?: string | null;
+  idrol?: number | null;
+  rol?: {
+    descripcion: string;
+    tipo: string;
+  };
+};
+
+export type UsersListResult = {
+  items: Usuario[];
+  next: string | null;
+  previous: string | null;
+  count?: number;
+};
+
+export type Rol = {
+  id: number;
+  descripcion: string;
+  tipo: string;
+  estado: any;
+};
+
+export type Propiedad = {
+  codigo: number;
+  tamano_m2: number;
+  nro_casa: number;
+  piso: number;
+  descripcion: string;
+  propietario_actual?: {
+    codigo: number;
+    nombre: string;
+    apellido: string;
+    correo: string;
+    tipo_rol: string;
+    fecha_ini: string;
+    fecha_fin?: string;
+  };
+};
+
+export type Pago = {
+  id: number;
+  tipo: string;
+  descripcion: string;
+  monto: number;
+  estado?: string;
+};
+
+export type PagoForm = {
+  tipo: string;
+  descripcion: string;
+  monto: number;
+  estado?: string;
+};
+
+export type Multa = {
+  id: number;
+  descripcion: string;
+  monto: number;
+  estado?: string;
+};
+
+export type MultaForm = {
+  descripcion: string;
+  monto: number;
+  estado?: string;
+};
+
+// ========= FUNCIONES DE UTILIDAD =========
+
+function buildQuery(params: Record<string, any>) {
+  const q = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== "") q.set(k, String(v));
+  });
+  return q.toString();
+}
+
+// ========= API DE AUTENTICACIÓN =========
+
 export const api = {
   async login(email: string, password: string): Promise<{ token: string; user: any }> {
     const response = await http<{ token: string; user: any }>(`${API_BASE}/api-token-auth/`, {
@@ -111,22 +209,242 @@ export const api = {
   },
 };
 
-export default api;
+// ========= API DE USUARIOS =========
 
-/* ========= Tipos comunes ========= */
-export type UserDTO = {
+export async function listUsers(opts: {
+  token: string;
+  search?: string;
+  estado?: string;
+  idrol?: string | number;
+  ordering?: string;
+  page?: number;
+}): Promise<UsersListResult> {
+  const { token, ...query } = opts;
+  const qs = buildQuery(query);
+  const url = `${API_PREFIX}/usuarios/${qs ? `?${qs}` : ""}`;
+  const data = await http<any>(url, { token });
+  if (Array.isArray(data)) return { items: data as Usuario[], next: null, previous: null, count: data.length };
+  return { items: (data.results ?? []) as Usuario[], next: data.next ?? null, previous: data.previous ?? null, count: data.count };
+}
+
+export function getUser({ token, codigo }: { token: string; codigo: number }) {
+  return http<Usuario>(`${API_PREFIX}/usuarios/${codigo}/`, { token });
+}
+
+export function patchUser({ token, codigo, payload }: { token: string; codigo: number; payload: Partial<Usuario> }) {
+  return http<Usuario>(`${API_PREFIX}/usuarios/${codigo}/`, { method: "PATCH", token, body: JSON.stringify(payload) });
+}
+
+export function createUser({ token, payload }: { token: string; payload: Omit<Usuario, 'codigo'> }) {
+  return http<Usuario>(`${API_PREFIX}/usuarios/`, { method: "POST", token, body: JSON.stringify(payload) });
+}
+
+export function deleteUser({ token, codigo }: { token: string; codigo: number }) {
+  return http<void>(`${API_PREFIX}/usuarios/${codigo}/`, { method: "DELETE", token });
+}
+
+// ========= API DE ROLES =========
+
+export async function listRoles(token: string): Promise<Rol[]> {
+  const data = await http<any>(`${API_PREFIX}/roles/`, { token });
+  return Array.isArray(data) ? data : data.results || [];
+}
+
+export function getRol({ token, id }: { token: string; id: number }) {
+  return http<Rol>(`${API_PREFIX}/roles/${id}/`, { token });
+}
+
+export function createRol({ token, payload }: { token: string; payload: Omit<Rol, 'id'> }) {
+  return http<Rol>(`${API_PREFIX}/roles/`, { method: "POST", token, body: JSON.stringify(payload) });
+}
+
+export function patchRol({ token, id, payload }: { token: string; id: number; payload: Partial<Rol> }) {
+  return http<Rol>(`${API_PREFIX}/roles/${id}/`, { method: "PATCH", token, body: JSON.stringify(payload) });
+}
+
+export function deleteRol({ token, id }: { token: string; id: number }) {
+  return http<void>(`${API_PREFIX}/roles/${id}/`, { method: "DELETE", token });
+}
+
+// ========= API DE PROPIEDADES =========
+
+export async function listPropiedades(opts: {
+  token: string;
+  include_residents?: boolean;
+  search?: string;
+  piso?: number;
+  page?: number;
+}): Promise<Propiedad[]> {
+  const { token, ...query } = opts;
+  const qs = buildQuery(query);
+  const url = `${API_PREFIX}/propiedades/${qs ? `?${qs}` : ""}`;
+  const data = await http<any>(url, { token });
+  return Array.isArray(data) ? data : data.results || [];
+}
+
+export function getPropiedad({ token, codigo }: { token: string; codigo: number }) {
+  return http<Propiedad>(`${API_PREFIX}/propiedades/${codigo}/`, { token });
+}
+
+export function createPropiedad({ token, payload }: {
+  token: string;
+  payload: { nro_casa: number; piso: number; tamano_m2: number; descripcion: string }
+}) {
+  return http<Propiedad>(`${API_PREFIX}/propiedades/`, { method: "POST", token, body: JSON.stringify(payload) });
+}
+
+export function patchPropiedad({ token, codigo, payload }: {
+  token: string;
   codigo: number;
-  nombre: string;
-  apellido: string;
-  correo: string;
-  sexo: string | null;
-  telefono: string | null;
-  estado: any;
-  idrol: number | null;
-  rol?: { id: number; descripcion: string; tipo?: string; estado?: any } | null;
+  payload: Partial<{ nro_casa: number; piso: number; tamano_m2: number; descripcion: string }>
+}) {
+  return http<Propiedad>(`${API_PREFIX}/propiedades/${codigo}/`, { method: "PATCH", token, body: JSON.stringify(payload) });
+}
+
+export function deletePropiedad({ token, codigo }: { token: string; codigo: number }) {
+  return http<void>(`${API_PREFIX}/propiedades/${codigo}/`, { method: "DELETE", token });
+}
+
+export function vincularResidente({ token, payload }: {
+  token: string;
+  payload: {
+    codigo_usuario: number;
+    codigo_propiedad: number;
+    fecha_ini: string;
+    fecha_fin?: string | null;
+  }
+}) {
+  return http<any>(`${API_PREFIX}/pertenece/`, { method: "POST", token, body: JSON.stringify(payload) });
+}
+
+// ========= API DE PAGOS =========
+
+export const pagosAPI = {
+  async list(token: string): Promise<Pago[]> {
+    const data = await http<any>(`${API_PREFIX}/pagos/`, { token });
+    return Array.isArray(data) ? data : data.results || [];
+  },
+
+  async get(token: string, id: number): Promise<Pago> {
+    return http<Pago>(`${API_PREFIX}/pagos/${id}/`, { token });
+  },
+
+  async create(token: string, payload: PagoForm): Promise<Pago> {
+    return http<Pago>(`${API_PREFIX}/pagos/`, { method: "POST", token, body: JSON.stringify(payload) });
+  },
+
+  async update(token: string, id: number, payload: Partial<PagoForm>): Promise<Pago> {
+    return http<Pago>(`${API_PREFIX}/pagos/${id}/`, { method: "PATCH", token, body: JSON.stringify(payload) });
+  },
+
+  async delete(token: string, id: number): Promise<void> {
+    return http<void>(`${API_PREFIX}/pagos/${id}/`, { method: "DELETE", token });
+  }
 };
 
-/* ========= Auth ========= */
+// ========= API DE MULTAS =========
+
+export const multasAPI = {
+  async list(token: string): Promise<Multa[]> {
+    const data = await http<any>(`${API_PREFIX}/multas/`, { token });
+    return Array.isArray(data) ? data : data.results || [];
+  },
+
+  async get(token: string, id: number): Promise<Multa> {
+    return http<Multa>(`${API_PREFIX}/multas/${id}/`, { token });
+  },
+
+  async create(token: string, payload: MultaForm): Promise<Multa> {
+    return http<Multa>(`${API_PREFIX}/multas/`, { method: "POST", token, body: JSON.stringify(payload) });
+  },
+
+  async update(token: string, id: number, payload: Partial<MultaForm>): Promise<Multa> {
+    return http<Multa>(`${API_PREFIX}/multas/${id}/`, { method: "PATCH", token, body: JSON.stringify(payload) });
+  },
+
+  async delete(token: string, id: number): Promise<void> {
+    return http<void>(`${API_PREFIX}/multas/${id}/`, { method: "DELETE", token });
+  }
+};
+
+// ========= API DE ESTADO DE CUENTA =========
+
+export async function getEstadoCuenta(token: string, mes: string) {
+  return http<any>(`${API_PREFIX}/estado-cuenta/?mes=${mes}`, { token });
+}
+
+export async function descargarComprobante(token: string, id: number) {
+  const response = await fetch(`${API_PREFIX}/comprobante/${id}/`, {
+    headers: { Authorization: `Token ${token}` },
+  });
+
+  if (!response.ok) {
+    throw new Error("No se pudo descargar el comprobante");
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `comprobante_${id}.pdf`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ========= API DE CASOS/INCIDENTES =========
+
+export async function listCasos(token: string) {
+  const data = await http<any>(`${API_PREFIX}/casos/`, { token });
+  return Array.isArray(data) ? data : data.results || [];
+}
+
+export function createCaso({ token, payload }: {
+  token: string;
+  payload: { titulo: string; descripcion: string; tipo: string; prioridad?: string }
+}) {
+  return http<any>(`${API_PREFIX}/casos/`, { method: "POST", token, body: JSON.stringify(payload) });
+}
+
+export function updateCaso({ token, id, payload }: {
+  token: string;
+  id: number;
+  payload: Partial<{ titulo: string; descripcion: string; tipo: string; prioridad: string; estado: string }>
+}) {
+  return http<any>(`${API_PREFIX}/casos/${id}/`, { method: "PATCH", token, body: JSON.stringify(payload) });
+}
+
+// ========= API DE DETECCIÓN AI =========
+
+export async function uploadImageForDetection(token: string, file: File, tipo: 'face' | 'plate' = 'face') {
+  const formData = new FormData();
+  formData.append('image', file);
+  formData.append('detection_type', tipo);
+
+  const response = await fetch(`${API_PREFIX}/ai-detection/`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Token ${token}`,
+    },
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.detail || 'Error en la detección');
+  }
+
+  return response.json();
+}
+
+export async function getDetectionHistory(token: string) {
+  return http<any>(`${API_PREFIX}/ai-detection/history/`, { token });
+}
+
+// ========= EXPORTACIONES ADICIONALES =========
+
+export default api;
+
+// Tipos legacy para compatibilidad
 export type LoginResponse = { token: string; user: UserDTO };
 export type RegisterPayload = {
   nombre: string; apellido: string; correo: string; contrasena: string; sexo: "M" | "F"; telefono?: string;
@@ -134,3 +452,4 @@ export type RegisterPayload = {
 export type RegisterResponse =
   | { ok: true; user?: UserDTO; id?: number; detail?: string }
   | { ok: false; detail?: string; fields?: Record<string, string | string[]> };
+

@@ -1,4 +1,4 @@
-// services/ai.ts - VERSIÓN SOLO FORMDATA
+// services/ai.ts - VERSIÓN COMPLETA
 import { http, API_PREFIX } from "./api";
 
 export type AIDetectionResponse = {
@@ -56,6 +56,16 @@ export type ListProfilesResponse = {
   profiles: FacialProfile[];
   count: number;
   error?: string;
+};
+
+export type DetectionResult = {
+  id: number;
+  image_url: string;
+  detection_type: 'face' | 'plate';
+  results: any;
+  confidence: number;
+  timestamp: string;
+  user: string;
 };
 
 // Función utilitaria para convertir base64 a blob
@@ -205,5 +215,47 @@ export const aiAPI = {
       reader.onerror = reject;
       reader.readAsDataURL(file);
     });
+  },
+
+  // NUEVAS FUNCIONES DE DETECCIÓN
+  uploadImageForDetection(token: string, file: File, tipo: 'face' | 'plate' = 'face'): Promise<DetectionResult> {
+    return new Promise(async (resolve, reject) => {
+      const formData = new FormData();
+      formData.append('image', file);
+      formData.append('detection_type', tipo);
+
+      try {
+        const response = await fetch(`${API_PREFIX}/ai-detection/`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Token ${token}`,
+          },
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json();
+          return reject(new Error(errorData.detail || 'Error en la detección'));
+        }
+
+        const result = await response.json();
+        resolve(result);
+      } catch (error) {
+        reject(error);
+      }
+    });
+  },
+
+  getDetectionHistory(token: string): Promise<DetectionResult[]> {
+    return http<any>(`${API_PREFIX}/ai-detection/history/`, { token })
+      .then(data => Array.isArray(data) ? data : data.results || []);
+  },
+
+  deleteDetection(token: string, id: number): Promise<void> {
+    return http<void>(`${API_PREFIX}/ai-detection/${id}/`, { method: "DELETE", token });
+  },
+
+  getDetectionStats(token: string) {
+    return http<any>(`${API_PREFIX}/ai-detection/stats/`, { token });
   }
 };
