@@ -44,7 +44,7 @@ export const PAQUETES: Paquete[] = [
       { name: "Publicar avisos", to: "/comunicados/publicar" },
       { name: "Consultar avisos", to: "/comunicados" },
       { name: "Configurar áreas comunes", to: "/areas-comunes/config" },
-      { name: "Gestionar reservas" },
+      { name: "Gestionar reservas", to: "/reservas" },
       { name: "Pagar reserva" },
       { name: "Notificaciones" },
       { name: "Reporte uso de áreas" },
