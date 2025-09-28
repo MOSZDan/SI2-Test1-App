@@ -60,12 +60,37 @@ export default function ComunicadosList() {
         if (filtros.fecha_from) params["fecha__gte"] = filtros.fecha_from;
         if (filtros.fecha_to) params["fecha__lte"] = filtros.fecha_to;
 
-        const data = await api.comunicados(token, params);
+        const data = await api.comunicados.list(token);
         if (cancel) return;
 
-        const paged = data as Paged<ComunicadoDTO>;
-        setItems(paged.results || []);
-        setCount(paged.count || 0);
+        // Como no tenemos paginación en la API simple, filtramos localmente
+        let filteredItems = data || [];
+
+        if (filtros.search) {
+          const searchLower = filtros.search.toLowerCase();
+          filteredItems = filteredItems.filter((item: ComunicadoDTO) =>
+            item.titulo?.toLowerCase().includes(searchLower) ||
+            item.contenido?.toLowerCase().includes(searchLower)
+          );
+        }
+
+        if (filtros.prioridad) {
+          filteredItems = filteredItems.filter((item: ComunicadoDTO) => item.tipo === filtros.prioridad);
+        }
+
+        if (filtros.estado) {
+          filteredItems = filteredItems.filter((item: ComunicadoDTO) => item.estado === filtros.estado);
+        }
+
+        // Ordenamiento
+        if (filtros.ordering === "-fecha") {
+          filteredItems.sort((a: ComunicadoDTO, b: ComunicadoDTO) => b.fecha.localeCompare(a.fecha));
+        } else {
+          filteredItems.sort((a: ComunicadoDTO, b: ComunicadoDTO) => a.fecha.localeCompare(b.fecha));
+        }
+
+        setItems(filteredItems);
+        setCount(filteredItems.length);
       } catch (e: any) {
         if (!cancel) setErrorMsg(e?.message || "Error cargando comunicados.");
       } finally {

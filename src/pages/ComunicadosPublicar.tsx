@@ -9,6 +9,7 @@ import {
   Paged,
   http,
 } from "../services/api";
+import { Usuario } from "../services/users";
 
 type UsuarioLite = { codigo: number; nombre: string; apellido: string };
 type RolDTO = { id: number; descripcion: string; tipo?: string; estado?: string };
@@ -66,9 +67,8 @@ export default function ComunicadosPublicar() {
     (async () => {
       try {
         setLoadingRoles(true);
-        const resp = await api.listRolesActivos(token);
-        const roles = (resp.results ?? []) as RolDTO[];
-        const tipos = Array.from(new Set(roles.map((r) => (r.tipo || "").trim()).filter(Boolean)));
+        const roles = await api.listRolesActivos(token);
+        const tipos = Array.from(new Set(roles.map((r: RolDTO) => (r.tipo || "").trim()).filter(Boolean)));
 
         const opts: OpcionDestino[] = [
           { kind: "todos", label: "todos", value: "todos" },
@@ -102,13 +102,13 @@ export default function ComunicadosPublicar() {
       setLoadingUsuarios(true);
       try {
         if (selected.kind === "usuarios") {
-          const first = await api.usuariosActivos(token, { page_size: 100 });
-          const all = await fetchAllPaged<any>(first, token);
+          const first = await api.usuariosActivos(token);
+          const all = await fetchAllPaged<Usuario>(first, token);
           if (cancel) return;
           const mapped: UsuarioLite[] = all.map((u) => ({
             codigo: u.codigo,
-            nombre: u.nombre,
-            apellido: u.apellido,
+            nombre: u.nombre || "",
+            apellido: u.apellido || "",
           }));
           setUsuarios(mapped);
           setSelUsuarioIds([]); // manual inicia vacío
@@ -117,12 +117,12 @@ export default function ComunicadosPublicar() {
 
         if (selected.kind === "rol") {
           const first = await api.usuariosPorRol(token, selected.value);
-          const all = await fetchAllPaged<any>(first as any, token);
+          const all = await fetchAllPaged<Usuario>(first, token);
           if (cancel) return;
           const mapped: UsuarioLite[] = all.map((u) => ({
             codigo: u.codigo,
-            nombre: u.nombre,
-            apellido: u.apellido,
+            nombre: u.nombre || "",
+            apellido: u.apellido || "",
           }));
           setUsuarios(mapped);
           setSelUsuarioIds(mapped.map((u) => u.codigo)); // preselecciona TODOS internamente
@@ -130,22 +130,22 @@ export default function ComunicadosPublicar() {
         }
 
         if (selected.kind === "tipo") {
-          const rolesResp = await api.listRolesActivos(token);
-          const roles = (rolesResp.results ?? []) as RolDTO[];
+          const roles = await api.listRolesActivos(token);
           const ids = roles.filter((r) => (r.tipo || "") === selected.value).map((r) => r.id);
           const all = await api.usuariosPorRoles(token, ids);
           if (cancel) return;
-          const mapped: UsuarioLite[] = all.map((u: any) => ({
+          const mapped: UsuarioLite[] = all.map((u) => ({
             codigo: u.codigo,
-            nombre: u.nombre,
-            apellido: u.apellido,
+            nombre: u.nombre || "",
+            apellido: u.apellido || "",
           }));
           setUsuarios(mapped);
           setSelUsuarioIds(mapped.map((u) => u.codigo)); // preselección interna
           return;
         }
-      } catch (e: any) {
-        if (!cancel) setErrorMsg(e?.message || "No se pudieron cargar los destinatarios.");
+      } catch (e: unknown) {
+        const errorMessage = e instanceof Error ? e.message : "No se pudieron cargar los destinatarios.";
+        if (!cancel) setErrorMsg(errorMessage);
       } finally {
         if (!cancel) setLoadingUsuarios(false);
       }
@@ -177,13 +177,18 @@ export default function ComunicadosPublicar() {
     }
 
     // backend entiende 'usuarios' cuando se envía lista explícita
-    let destinatarios: Destinatarios = selected.kind === "todos" ? "todos" : "usuarios";
+    const destinatarios: Destinatarios = selected.kind === "todos" ? "todos" : "usuarios";
 
+    // Agregar campos obligatorios que faltaban
+    const now = new Date();
     const payload: ComunicadoPayload = {
+      tipo: prioridad, // El tipo se mapea de la prioridad
+      fecha: fechaPublicacion || now.toISOString().split('T')[0], // Fecha actual si no se especifica
+      hora: horaPublicacion || now.toTimeString().split(' ')[0], // Hora actual si no se especifica
       titulo: titulo.trim(),
       contenido: contenido.trim(),
-      prioridad,
       destinatarios,
+      prioridad,
     };
 
     if (destinatarios === "usuarios") {
@@ -199,8 +204,9 @@ export default function ComunicadosPublicar() {
         replace: true,
         state: { flash: resp.mensaje || "Comunicado publicado correctamente." },
       });
-    } catch (err: any) {
-      setErrorMsg(err?.message || "Error al publicar el comunicado.");
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : "Error al publicar el comunicado.";
+      setErrorMsg(errorMessage);
     } finally {
       setEnviando(false);
     }

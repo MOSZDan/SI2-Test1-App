@@ -204,6 +204,23 @@ export type HorarioForm = {
 
 // ========= TIPOS DE COMUNICADOS =========
 
+export type ComunicadoDTO = {
+  id: number;
+  tipo: string;
+  fecha: string;
+  hora: string;
+  titulo: string;
+  contenido: string;
+  url?: string;
+  estado: string;
+  codigo_usuario: number;
+  usuario?: {
+    codigo: number;
+    nombre: string;
+    apellido: string;
+  };
+};
+
 export type ComunicadoPayload = {
   tipo: string;
   fecha: string;
@@ -213,11 +230,14 @@ export type ComunicadoPayload = {
   url?: string;
   destinatarios: Destinatarios;
   prioridad: Prioridad;
+  usuario_ids?: number[];
+  fecha_publicacion?: string;
+  hora_publicacion?: string;
 };
 
 export type Destinatarios = "todos" | "copropietarios" | "inquilinos" | "administradores" | "usuarios" | number[];
 
-export type Prioridad = "baja" | "media" | "alta" | "urgente";
+export type Prioridad = "baja" | "media" | "alta" | "urgente" | "normal" | "importante";
 
 export type Paged<T> = {
   results: T[];
@@ -340,6 +360,38 @@ export const api = {
       token,
       body: JSON.stringify(payload)
     });
+  },
+
+  // API de comunicados completa
+  comunicados: {
+    async list(token: string): Promise<ComunicadoDTO[]> {
+      const data = await http<any>(`${API_PREFIX}/comunicados/`, { token });
+      return Array.isArray(data) ? data : data.results || [];
+    },
+
+    async get(token: string, id: number): Promise<ComunicadoDTO> {
+      return http<ComunicadoDTO>(`${API_PREFIX}/comunicados/${id}/`, { token });
+    },
+
+    async create(token: string, payload: ComunicadoPayload): Promise<ComunicadoDTO> {
+      return http<ComunicadoDTO>(`${API_PREFIX}/comunicados/`, {
+        method: "POST",
+        token,
+        body: JSON.stringify(payload)
+      });
+    },
+
+    async update(token: string, id: number, payload: Partial<ComunicadoPayload>): Promise<ComunicadoDTO> {
+      return http<ComunicadoDTO>(`${API_PREFIX}/comunicados/${id}/`, {
+        method: "PATCH",
+        token,
+        body: JSON.stringify(payload)
+      });
+    },
+
+    async delete(token: string, id: number): Promise<void> {
+      return http<void>(`${API_PREFIX}/comunicados/${id}/`, { method: "DELETE", token });
+    }
   }
 };
 
