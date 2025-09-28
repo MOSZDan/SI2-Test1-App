@@ -16,7 +16,7 @@ export interface ApiError {
   errors?: Record<string, string[]>;
 }
 
-// Función HTTP central con mejor manejo de errores
+// Función HTTP central con mejor manejo de errores y reconexión
 export async function http<T>(
   url: string,
   options: {
@@ -24,9 +24,10 @@ export async function http<T>(
     token?: string;
     body?: string;
     headers?: Record<string, string>;
+    retries?: number;
   } = {}
 ): Promise<T> {
-  const { method = "GET", token, body, headers = {} } = options;
+  const { method = "GET", token, body, headers = {}, retries = 2 } = options;
 
   const config: RequestInit = {
     method,
@@ -34,6 +35,8 @@ export async function http<T>(
       "Content-Type": "application/json",
       ...headers,
     },
+    // Configuración específica para Transaction Pooler
+    keepalive: false, // No mantener conexiones vivas
   };
 
   if (token) {
@@ -47,43 +50,76 @@ export async function http<T>(
     config.body = body;
   }
 
-  try {
-    const response = await fetch(url, config);
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const response = await fetch(url, config);
 
-    if (!response.ok) {
-      let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+      // Manejar errores de autenticación
+      if (response.status === 401 || response.status === 403) {
+        // Token inválido o expirado - limpiar localStorage
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
 
-      try {
-        const errorData = await response.json();
-        if (errorData.detail) {
-          errorMessage = errorData.detail;
-        } else if (errorData.message) {
-          errorMessage = errorData.message;
-        } else if (errorData.errors) {
-          const firstError = Object.values(errorData.errors)[0];
-          if (Array.isArray(firstError) && firstError.length > 0) {
-            errorMessage = firstError[0];
-          }
+        // Recargar la página para forzar re-autenticación
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login';
         }
-      } catch {
-        // Si no se puede parsear el JSON de error, usar el mensaje por defecto
+
+        throw new Error("Sesión expirada. Por favor, inicia sesión nuevamente.");
       }
 
-      throw new Error(errorMessage);
-    }
+      if (!response.ok) {
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
 
-    // Manejar respuestas vacías (204 No Content)
-    if (response.status === 204) {
-      return {} as T;
-    }
+        try {
+          const errorData = await response.json();
+          if (errorData.detail) {
+            errorMessage = errorData.detail;
+          } else if (errorData.message) {
+            errorMessage = errorData.message;
+          } else if (errorData.errors) {
+            const firstError = Object.values(errorData.errors)[0];
+            if (Array.isArray(firstError) && firstError.length > 0) {
+              errorMessage = firstError[0];
+            }
+          }
+        } catch {
+          // Si no se puede parsear el JSON de error, usar el mensaje por defecto
+        }
 
-    return await response.json();
-  } catch (error) {
-    if (error instanceof Error) {
-      throw error;
+        // Para errores 500, intentar reintento si no es el último intento
+        if (response.status >= 500 && attempt < retries) {
+          console.warn(`Error 500 en intento ${attempt + 1}, reintentando...`);
+          // Esperar un poco antes del reintento (backoff exponencial)
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+          continue;
+        }
+
+        throw new Error(errorMessage);
+      }
+
+      // Manejar respuestas vacías (204 No Content)
+      if (response.status === 204) {
+        return {} as T;
+      }
+
+      return await response.json();
+    } catch (error) {
+      // Si es el último intento o un error que no es de red, lanzar el error
+      if (attempt === retries || (error instanceof Error && error.message.includes("Sesión expirada"))) {
+        if (error instanceof Error) {
+          throw error;
+        }
+        throw new Error("Error de conexión con el servidor");
+      }
+
+      // Para otros errores de red, intentar reintento
+      console.warn(`Error de conexión en intento ${attempt + 1}, reintentando...`);
+      await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
     }
-    throw new Error("Error de conexión con el servidor");
   }
+
+  throw new Error("Error de conexión con el servidor después de varios intentos");
 }
 
 // ========= TIPOS PRINCIPALES =========
@@ -326,6 +362,10 @@ export const api = {
       body: JSON.stringify(userData),
     });
     return response;
+  },
+
+  async getCurrentUser(token: string): Promise<UserDTO> {
+    return http<UserDTO>(`${API_PREFIX}/auth/user/`, { token });
   },
 
   async getProfile(token: string): Promise<any> {
