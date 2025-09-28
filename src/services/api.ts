@@ -226,14 +226,14 @@ export type Paged<T> = {
   previous: string | null;
 };
 
-// ========= TIPOS DE RESERVAS =========
+// ========= TIPOS DE RESERVAS - ACTUALIZADOS SEGÚN CASO DE USO =========
 
 export type ReservaDTO = {
   id: number;
   codigo_usuario: number | null;
   id_area_c: number | null;
   fecha: string | null;
-  estado: string | null;
+  estado: "confirmada" | "cancelada" | "finalizada" | null;
   usuario?: {
     codigo: number;
     nombre: string;
@@ -243,6 +243,26 @@ export type ReservaDTO = {
     id: number;
     descripcion: string;
   };
+};
+
+export type DisponibilidadDTO = {
+  fecha: string;
+  area_id: number;
+  area_descripcion: string;
+  horarios_disponibles: {
+    hora_ini: string;
+    hora_fin: string;
+    disponible: boolean;
+  }[];
+  reservas_existentes: ReservaDTO[];
+};
+
+export type ReservaForm = {
+  codigo_usuario: number;
+  id_area_c: number;
+  fecha: string;
+  hora_ini?: string;
+  hora_fin?: string;
 };
 
 // ========= FUNCIONES DE UTILIDAD =========
@@ -733,7 +753,7 @@ export const reservasApi = {
     return http<ReservaDTO>(`${API_PREFIX}/reserva/${id}/`, { token });
   },
 
-  async create(token: string, payload: { codigo_usuario: number; id_area_c: number; fecha: string }): Promise<ReservaDTO> {
+  async create(token: string, payload: ReservaForm): Promise<ReservaDTO> {
     return http<ReservaDTO>(`${API_PREFIX}/reserva/`, {
       method: "POST",
       token,
@@ -741,7 +761,7 @@ export const reservasApi = {
     });
   },
 
-  async update(token: string, id: number, payload: Partial<{ estado: string; fecha: string }>): Promise<ReservaDTO> {
+  async update(token: string, id: number, payload: Partial<ReservaForm>): Promise<ReservaDTO> {
     return http<ReservaDTO>(`${API_PREFIX}/reserva/${id}/`, {
       method: "PATCH",
       token,
@@ -752,6 +772,29 @@ export const reservasApi = {
   async delete(token: string, id: number): Promise<void> {
     return http<void>(`${API_PREFIX}/reserva/${id}/`, { method: "DELETE", token });
   },
+
+  // Función para cancelar reserva (paso 11 del caso de uso)
+  async cancelar(token: string, id: number): Promise<ReservaDTO> {
+    return http<ReservaDTO>(`${API_PREFIX}/reserva/${id}/`, {
+      method: "PATCH",
+      token,
+      body: JSON.stringify({ estado: "cancelada" })
+    });
+  },
+
+  // Función para obtener disponibilidad (paso 4 del caso de uso)
+  async obtenerDisponibilidad(token: string, areaId: number, fecha: string): Promise<DisponibilidadDTO> {
+    return http<DisponibilidadDTO>(`${API_PREFIX}/reserva/disponibilidad/?area_id=${areaId}&fecha=${fecha}`, { token });
+  },
+
+  // Función para validar disponibilidad en tiempo real (paso 7 del caso de uso)
+  async validarDisponibilidad(token: string, payload: ReservaForm): Promise<{ disponible: boolean; mensaje?: string }> {
+    return http<{ disponible: boolean; mensaje?: string }>(`${API_PREFIX}/reserva/validar-disponibilidad/`, {
+      method: "POST",
+      token,
+      body: JSON.stringify(payload)
+    });
+  }
 };
 
 // ========= APIS ADICIONALES COMPLETAS =========

@@ -56,22 +56,12 @@ export default function Navbar() {
                 </span>
               </div>
 
-              {/* Opción A: navegar a /logout */}
               <NavLink
                 to="/logout"
                 className="rounded-md border border-slate-200 px-3 py-1.5 text-slate-700 hover:bg-slate-50"
               >
                 Salir
               </NavLink>
-
-              {/* Opción B: salir directo desde el botón (descomenta si prefieres esto)
-              <button
-                onClick={logout}
-                className="rounded-md border border-slate-200 px-3 py-1.5 text-slate-700 hover:bg-slate-50"
-              >
-                Salir
-              </button>
-              */}
             </>
           ) : (
             <>
