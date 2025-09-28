@@ -2,6 +2,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useAuth } from "../context/AuthContext";
 import Navbar from "../components/Navbar";
+import { Usuario } from "../services/users";
 
 // ---- Helper UI ----
 function InlineError({ text }: { text: string }) {
@@ -27,18 +28,6 @@ type Propiedad = {
     tipo_rol: string;
     fecha_ini: string;
     fecha_fin?: string;
-  };
-};
-
-type Usuario = {
-  codigo: number;
-  nombre: string;
-  apellido: string;
-  correo: string;
-  idrol: number;
-  rol?: {
-    descripcion: string;
-    tipo: string;
   };
 };
 
