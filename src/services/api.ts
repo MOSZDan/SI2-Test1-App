@@ -187,6 +187,21 @@ export type AreaComunForm = {
   estado: "activo" | "inactivo" | "mantenimiento";
 };
 
+// ========= TIPOS DE HORARIOS =========
+
+export type HorarioDTO = {
+  id: number;
+  hora_ini: string;
+  hora_fin: string;
+  id_area_c: number;
+};
+
+export type HorarioForm = {
+  id_area_c: number;
+  hora_ini: string;
+  hora_fin: string;
+};
+
 // ========= FUNCIONES DE UTILIDAD =========
 
 function buildQuery(params: Record<string, any>) {
@@ -416,6 +431,44 @@ export const areasApi = {
 
   async delete(token: string, id: number): Promise<void> {
     return http<void>(`${API_PREFIX}/areas-comunes/${id}/`, { method: "DELETE", token });
+  },
+
+  // Cambié el nombre de 'delete' a 'remove' para evitar conflictos con la palabra reservada
+  async remove(token: string, id: number): Promise<void> {
+    return http<void>(`${API_PREFIX}/areas-comunes/${id}/`, { method: "DELETE", token });
+  },
+
+  // ========= SUB-API DE HORARIOS =========
+  horarios: {
+    async list(token: string, areaId: number): Promise<{ results: HorarioDTO[] }> {
+      const data = await http<any>(`${API_PREFIX}/horarios/?id_area_c=${areaId}`, { token });
+      // Retornamos en el formato que espera el componente
+      return Array.isArray(data) ? { results: data } : { results: data.results || [] };
+    },
+
+    async get(token: string, id: number): Promise<HorarioDTO> {
+      return http<HorarioDTO>(`${API_PREFIX}/horarios/${id}/`, { token });
+    },
+
+    async create(token: string, payload: HorarioForm): Promise<HorarioDTO> {
+      return http<HorarioDTO>(`${API_PREFIX}/horarios/`, {
+        method: "POST",
+        token,
+        body: JSON.stringify(payload)
+      });
+    },
+
+    async update(token: string, id: number, payload: Partial<HorarioForm>): Promise<HorarioDTO> {
+      return http<HorarioDTO>(`${API_PREFIX}/horarios/${id}/`, {
+        method: "PATCH",
+        token,
+        body: JSON.stringify(payload)
+      });
+    },
+
+    async remove(token: string, id: number): Promise<void> {
+      return http<void>(`${API_PREFIX}/horarios/${id}/`, { method: "DELETE", token });
+    }
   }
 };
 
@@ -504,4 +557,3 @@ export type RegisterPayload = {
 export type RegisterResponse =
   | { ok: true; user?: UserDTO; id?: number; detail?: string }
   | { ok: false; detail?: string; fields?: Record<string, string | string[]> };
-

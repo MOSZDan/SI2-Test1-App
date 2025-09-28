@@ -41,15 +41,16 @@ export default function AreasComunesConfig() {
   const loadAreas = async () => {
     setLoading(true);
     try {
-      const data = await areasApi.list(token!, { page_size: 200 });
-      setAreas(data.results);
+      const data = await areasApi.list(token!);
+      setAreas(data);
       // refrescar selección si existía
       if (selected) {
-        const upd = data.results.find((a) => a.id === selected.id) || null;
+        const upd = data.find((a: AreaComunDTO) => a.id === selected.id) || null;
         setSelected(upd);
       }
-    } catch (e: any) {
-      setError(e?.message ?? "Error cargando áreas.");
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : "Error cargando áreas.";
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
