@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { login, me } from './api'
+import { login } from './api'
 
 /* ——— Iconos SVG inline ——— */
 const CondoLogo = () => (
@@ -45,10 +45,10 @@ export default function Login() {
     setLoading(true)
     try {
       const data = await login(email, password)
-      const access = data.access as string
-      localStorage.setItem('token', access)
-      const u = await me(access)
-      setMsg(`Bienvenido: ${u.first_name || ''} ${u.last_name || ''} (${u.email})`)
+      // El backend ya devuelve toda la información del usuario en la respuesta de login
+      // No necesitamos hacer una llamada adicional a /me/
+      localStorage.setItem('token', data.token)
+      setMsg(`Bienvenido: ${data.user.nombre || ''} ${data.user.apellido || ''} (${data.user.correo})`)
     } catch (err: any) {
       setMsg(err?.message ?? 'Error al iniciar sesión')
     } finally {
