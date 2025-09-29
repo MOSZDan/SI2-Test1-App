@@ -12,11 +12,3 @@ export async function login(email: string, password: string) {
   }
   return res.json();
 }
-
-export async function me(token: string) {
-  const res = await fetch(`${API_BASE}/api/auth/me/`, {
-    headers: { 'Authorization': `Bearer ${token}` }
-  });
-  if (!res.ok) throw new Error('No autorizado');
-  return res.json();
-}
